@@ -57,7 +57,7 @@ def build_intake_prompt(evidence: PageEvidence) -> Dict[str, Any]:
         "fields": fields,
         "buttons": evidence.buttons,
         "required_output_schema": {
-            "ats_type": "oracle_taleo|oracle_recruiting_cloud|workday|greenhouse|lever|ashby|custom|unknown",
+            "ats_type": "oracle_taleo|oracle_recruiting_cloud|workday|greenhouse|lever|ashby|people_ksa|careers_page|custom|unknown",
             "detection_confidence": "0.0-1.0",
             "application_flow_summary": "string",
             "visible_required_fields": ["string"],
