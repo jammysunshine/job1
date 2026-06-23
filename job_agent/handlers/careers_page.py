@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import asyncio
+import json
+import os
 import re
+import urllib.request
+import urllib.parse
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..models import FieldEvidence
-from ..storage import SCREENSHOT_DIR
+from ..storage import ROOT, SCREENSHOT_DIR
 from .base import FillResult, VendorHandler
 
 
@@ -55,106 +61,212 @@ class CareersPageHandler(VendorHandler):
         result = FillResult(status="started")
         errors: List[str] = []
 
-        p = await async_playwright().start()
-        browser = await p.chromium.launch(
-            headless=self.headless,
-            args=["--start-maximized"] if not self.headless else None,
-        )
-        page = await browser.new_page()
-        await page.goto(url, wait_until="domcontentloaded", timeout=60000)
-        await page.wait_for_timeout(2000)
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=self.headless)
+            page = await browser.new_page()
+            await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            await page.wait_for_timeout(2000)
 
-        apply_btn = page.locator("text=Apply now").first
-        if await apply_btn.is_visible():
-            await apply_btn.click()
-            await page.wait_for_timeout(3000)
+            apply_btn = page.locator("text=Apply now").first
+            if await apply_btn.is_visible():
+                await apply_btn.click()
+                await page.wait_for_timeout(3000)
 
-        form_url = page.url
-        await page.wait_for_load_state("networkidle", timeout=10000)
-        await page.wait_for_timeout(2000)
+            form_url = page.url
+            await page.wait_for_load_state("networkidle", timeout=10000)
+            await page.wait_for_timeout(2000)
 
-        live_fields = await self._extract_fields(page)
-        live_by_idx = {f.field_idx: f for f in live_fields}
+            live_fields = await self._extract_fields(page)
+            live_by_idx = {f.field_idx: f for f in live_fields}
 
-        filled = []
-        for entry in field_mapping.get("fields", []):
-            field_idx = entry.get("field_idx")
-            field_id = entry.get("field_id")
-            value = entry.get("value")
-            if field_idx is None or not field_id or value is None:
-                continue
+            filled = []
+            for entry in field_mapping.get("fields", []):
+                field_idx = entry.get("field_idx")
+                field_id = entry.get("field_id")
+                value = entry.get("value")
+                if field_idx is None or not field_id or value is None:
+                    continue
 
-            match = live_by_idx.get(field_idx)
-            if match is None:
-                errors.append(f"Field not found: idx={field_idx} id={field_id}")
-                continue
+                match = live_by_idx.get(field_idx)
+                if match is None:
+                    errors.append(f"Field not found: idx={field_idx} id={field_id}")
+                    continue
 
-            el = page.locator("input, select, textarea").nth(match.field_idx)
+                el = page.locator("input, select, textarea").nth(match.field_idx)
 
-            tag = match.tag_name
-            input_type = match.input_type
+                tag = match.tag_name
+                input_type = match.input_type
 
-            is_readonly_file = (
-                tag == "input"
-                and input_type in ("text", None)
-                and (
-                    (match.placeholder and "attachment" in match.placeholder.lower())
-                    or (match.nearby_text and any(
-                        kw in match.nearby_text.lower()
-                        for kw in ("upload", "cv", "resume", "attachment", "file")
-                    ))
+                is_readonly_file = (
+                    tag == "input"
+                    and input_type in ("text", None)
+                    and (
+                        (match.placeholder and "attachment" in match.placeholder.lower())
+                        or (match.nearby_text and any(
+                            kw in match.nearby_text.lower()
+                            for kw in ("upload", "cv", "resume", "attachment", "file")
+                        ))
+                    )
                 )
-            )
-            if is_readonly_file:
-                continue
+                if is_readonly_file:
+                    continue
 
-            try:
-                if tag == "select":
-                    await el.select_option(label=value)
-                elif input_type == "checkbox":
-                    checked = await el.is_checked()
-                    if (value is True or str(value).lower() == "on") and not checked:
-                        await el.check()
-                    elif (value is False or str(value).lower() == "off") and checked:
-                        await el.uncheck()
-                elif input_type == "file":
-                    if cv_path:
-                        await el.set_input_files(cv_path)
-                else:
-                    await el.fill(str(value))
-                filled.append({"field_id": field_id, "value": value})
-            except Exception as exc:
-                errors.append(f"Failed to fill {field_id}: {exc}")
-
-        if cv_path:
-            file_input = page.locator('input[type="file"]').first
-            if await file_input.count():
                 try:
-                    await file_input.set_input_files(cv_path)
-                    filled.append({"field_id": "file_upload", "value": cv_path})
+                    if tag == "select":
+                        await el.select_option(label=value)
+                    elif input_type == "checkbox":
+                        checked = await el.is_checked()
+                        if (value is True or str(value).lower() == "on") and not checked:
+                            await el.check()
+                        elif (value is False or str(value).lower() == "off") and checked:
+                            await el.uncheck()
+                    elif input_type == "file":
+                        if cv_path:
+                            await el.set_input_files(cv_path)
+                    else:
+                        await el.fill(str(value))
+                    filled.append({"field_id": field_id, "value": value})
                 except Exception as exc:
-                    errors.append(f"CV upload failed: {exc}")
+                    errors.append(f"Failed to fill {field_id}: {exc}")
 
-        await page.wait_for_timeout(1000)
-        slug = self._safe_slug(form_url)
-        screenshot_path = str(SCREENSHOT_DIR / f"{slug}-filled.png")
-        await page.screenshot(path=screenshot_path, full_page=True)
+            if cv_path:
+                file_input = page.locator('input[type="file"]').first
+                if await file_input.count():
+                    try:
+                        await file_input.set_input_files(cv_path)
+                        filled.append({"field_id": "file_upload", "value": cv_path})
+                    except Exception as exc:
+                        errors.append(f"CV upload failed: {exc}")
 
-        result.status = "filled_awaiting_review" if not errors else "filled_with_errors"
-        result.filled_fields = filled
-        result.errors = errors
-        result.screenshot_path = screenshot_path
-        result.form_url = form_url
+            await page.wait_for_timeout(1000)
+            slug = self._safe_slug(form_url)
+            screenshot_path = str(SCREENSHOT_DIR / f"{slug}-filled.png")
+            await page.screenshot(path=screenshot_path, full_page=True)
 
-        if not self.headless:
-            print("\nBrowser is open for your review. Check all fields before submitting.")
-            print("Press Enter in this terminal to close the browser once done.")
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, input, "")
-            await browser.close()
-            await p.stop()
+            result.status = "filled_awaiting_review" if not errors else "filled_with_errors"
+            result.filled_fields = filled
+            result.errors = errors
+            result.screenshot_path = screenshot_path
+            result.form_url = form_url
+
+            if not self.headless:
+                self._save_learned_answers(filled, form_url)
+                from ..telegram_bot import send_message
+                await send_message(
+                    f"Form filled for: {form_url}\n\n"
+                    "Review and edit fields in the browser. "
+                    "Send 'save' to me here when ready — I'll capture your "
+                    "adjustments as learned answers, then you can submit."
+                )
+                print("\nBrowser open — review and edit fields in the browser.")
+                print("Send 'save' to this Telegram chat when ready to capture adjustments.")
+                TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+                chat_id = self._load_chat_id()
+                last_update_id = 0
+                while True:
+                    await asyncio.sleep(3)
+                    if TELEGRAM_TOKEN and chat_id:
+                        msgs = self._poll_telegram(TELEGRAM_TOKEN, chat_id, last_update_id)
+                        for msg_text, upd_id in msgs:
+                            last_update_id = max(last_update_id, upd_id)
+                            if msg_text.strip().lower() in ("save", "capture", "learn"):
+                                current = await self._read_current_values(page, live_fields)
+                                self._save_learned_answers(current, form_url)
+                                self._reply_telegram(
+                                    TELEGRAM_TOKEN, chat_id,
+                                    f"Saved {len(current)} field values. You can submit now."
+                                )
+                                print(f"Captured {len(current)} field values — saved to learned_answers.json")
 
         return result
+
+    def _load_chat_id(self) -> Optional[int]:
+        path = ROOT / "data" / "telegram_chat_id.txt"
+        if path.exists():
+            try:
+                return int(path.read_text().strip())
+            except (ValueError, OSError):
+                return None
+        return None
+
+    def _telegram_api(self, method: str, data: dict) -> Optional[dict]:
+        token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+        if not token:
+            return None
+        url = f"https://api.telegram.org/bot{token}/{method}"
+        try:
+            body = urllib.parse.urlencode(data).encode()
+            req = urllib.request.Request(url, data=body)
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                return json.loads(resp.read())
+        except Exception:
+            return None
+
+    def _poll_telegram(
+        self, token: str, chat_id: int, last_update_id: int
+    ) -> List[tuple]:
+        result = self._telegram_api("getUpdates", {
+            "offset": last_update_id + 1,
+            "timeout": 2,
+            "allowed_updates": json.dumps(["message"]),
+        })
+        msgs = []
+        if result and result.get("ok"):
+            for update in result.get("result", []):
+                upd_id = update.get("update_id", 0)
+                msg = update.get("message", {})
+                if msg.get("chat", {}).get("id") == chat_id:
+                    text = msg.get("text", "")
+                    msgs.append((text, upd_id))
+        return msgs
+
+    def _reply_telegram(self, token: str, chat_id: int, text: str) -> None:
+        self._telegram_api("sendMessage", {
+            "chat_id": chat_id,
+            "text": text,
+        })
+
+    def _save_learned_answers(
+        self, filled: List[Dict[str, Any]], form_url: str
+    ) -> None:
+        path = ROOT / "data" / "learned_answers.json"
+        existing = {}
+        if path.exists():
+            existing = json.loads(path.read_text())
+        answers = existing.get("answers", [])
+        seen_questions = {a.get("question") for a in answers}
+        for f in filled:
+            question = f"Value for field: {f['field_id']}"
+            if question not in seen_questions:
+                answers.append({
+                    "field_context": f["field_id"],
+                    "question": question,
+                    "answer": str(f["value"]),
+                    "source_url": form_url,
+                })
+                seen_questions.add(question)
+        path.write_text(json.dumps({"answers": answers}, indent=2))
+
+    async def _read_current_values(
+        self, page, live_fields: List[FieldEvidence]
+    ) -> List[Dict[str, Any]]:
+        values = []
+        locator = page.locator("input, select, textarea")
+        for f in live_fields:
+            el = locator.nth(f.field_idx)
+            tag = f.tag_name
+            input_type = f.input_type
+            try:
+                if tag == "select":
+                    val = await el.evaluate("el => el.options[el.selectedIndex]?.text || ''")
+                elif input_type == "checkbox":
+                    val = "true" if await el.is_checked() else "false"
+                else:
+                    val = await el.input_value()
+                values.append({"field_id": f.field_id, "value": val})
+            except Exception:
+                pass
+        return values
 
     async def _extract_fields(self, page) -> List[FieldEvidence]:
         locator = page.locator("input, select, textarea")

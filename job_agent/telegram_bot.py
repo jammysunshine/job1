@@ -5,6 +5,7 @@ import logging
 import os
 import re
 from pathlib import Path
+from typing import Optional
 
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
@@ -58,8 +59,65 @@ async def status(update: Update, _context) -> None:
     await update.message.reply_text("Bot is running.")
 
 
+CHAT_ID_PATH = ROOT / "data" / "telegram_chat_id.txt"
+LEARN_SIGNAL_PATH = ROOT / "data" / "learn_signal.json"
+LEARN_DONE_PATH = ROOT / "data" / "learn_done.json"
+
+
+def save_chat_id(chat_id: int) -> None:
+    ensure_data_dirs()
+    CHAT_ID_PATH.write_text(str(chat_id))
+
+
+def load_chat_id() -> Optional[int]:
+    if CHAT_ID_PATH.exists():
+        try:
+            return int(CHAT_ID_PATH.read_text().strip())
+        except (ValueError, OSError):
+            return None
+    return None
+
+
+async def send_message(text: str) -> bool:
+    load_env()
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = load_chat_id()
+    if not token or not chat_id:
+        return False
+    try:
+        app = Application.builder().token(token).build()
+        await app.bot.send_message(chat_id=chat_id, text=text)
+        return True
+    except Exception as exc:
+        logger.error("Failed to send Telegram message: %s", exc)
+        return False
+
+
+SIGNAL_HANDLERS: dict = {}
+
+
+def set_signal_handler(name: str, handler) -> None:
+    SIGNAL_HANDLERS[name] = handler
+
+
 async def handle_message(update: Update, _context) -> None:
     text = (update.message.text or "").strip()
+    save_chat_id(update.effective_chat.id)
+
+    lower = text.lower()
+    if lower in ("save", "capture", "learn"):
+        LEARN_SIGNAL_PATH.write_text(json.dumps({"command": lower, "chat_id": update.effective_chat.id}))
+        await update.message.reply_text("Capturing form values... stand by.")
+        for _ in range(30):
+            await asyncio.sleep(1)
+            if LEARN_DONE_PATH.exists():
+                done = json.loads(LEARN_DONE_PATH.read_text())
+                LEARN_DONE_PATH.unlink(missing_ok=True)
+                await update.message.reply_text(done.get("message", "Saved! You can submit now."))
+                return
+        await update.message.reply_text("No fill process responded. Is a fill running?")
+        return
+
     match = URL_RE.search(text)
     if not match:
         await update.message.reply_text(
