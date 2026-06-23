@@ -33,11 +33,15 @@ Flow:
 - Payload: `{ job_url, user_note, timestamp }`
 
 ### 2.2 Job Intake Service
-- Detect ATS from URL/domain patterns first, before doing expensive page
-  inspection
+- Gather ATS signals from URL/domain patterns, page title, visible text,
+  scripts, form structure, and browser-observed behavior. URL/domain
+  patterns are only cheap hints, not the whole detection strategy.
 - Fetch job page HTML when available; if the page is JS-rendered,
   login-gated, or blocks plain HTTP fetches, fall back to Playwright
   inspection in a headed browser
+- Use the LLM to classify/confirm the ATS and application flow from the
+  collected evidence, especially when the URL pattern is ambiguous or
+  the page is a custom-branded wrapper over a known ATS
 - Detect ATS: Oracle Taleo / Oracle Recruiting Cloud / Workday /
   Greenhouse / Lever / Ashby / Custom
 - Extract: job title, company, location, application steps, visible
@@ -150,17 +154,29 @@ get smarter rather than repeating stale defaults:
   learned answers, preferences
 - Outputs: `{ field_mapping, missing_fields_questions[], cv_variant,
   cv_variant_confidence, cover_letter_needed }`
-- Used from day 1, including the first MVP vendor. The LLM is the
-  planner/mapping layer; it decides what each visible form question
-  likely means and what answer should be used.
+- **Central design choice: the LLM is the primary reasoning engine.**
+  It is used from day 1, including the first MVP vendor. It decides what
+  the application page is asking, which profile/learned-answer/CV data
+  best answers each question, which questions need clarification, and
+  which CV variant fits the role.
+- Field matching must be semantic and LLM-driven, not a hard-coded
+  lookup table of labels like `first_name -> firstName`. Lookup tables
+  may exist only for low-level normalization and safety checks, not as
+  the main intelligence of the system.
 - The LLM does NOT directly operate the browser. Vendor handlers remain
-  deterministic guardrails: they discover fields, expose normalized
-  field metadata to the LLM, validate the returned mapping, and perform
-  the actual Playwright actions.
+  deterministic guardrails: they discover fields, expose rich field
+  metadata/evidence to the LLM, validate the returned mapping, and
+  perform the actual Playwright actions.
+- Vendor handlers should avoid encoding personal-answer logic. Their
+  job is to understand the mechanics of a platform (selectors, widgets,
+  multi-step navigation, file upload, validation errors), not to decide
+  what an answer means or which answer should be chosen.
 - Output must be strict structured JSON, not free-form prose. Each
   mapped field should include:
   - `field_id`
   - `field_label`
+  - `field_evidence` (nearby text, placeholder, options, aria label,
+    section heading, required/optional state)
   - `answer`
   - `answer_source` (`profile`, `learned_answers`, `user_reply`,
     `generated`, or `unknown`)
@@ -282,6 +298,9 @@ where you're not near your laptop.
   be enough until you have a reason for a queue
 - Messaging: Telegram Bot API
 - AI: structured outputs for field mapping / question generation
+- Design posture: LLM-centric reasoning with deterministic browser
+  execution. The LLM interprets form meaning; code enforces safety and
+  performs actions.
 - Hosting for MVP: local Mac only. Cloud Run is a future option for API
   pieces that do not need a local headed browser, but the Playwright
   browser session stays local until the noVNC/cloud-VM upgrade path is
@@ -329,15 +348,19 @@ portals
       the system; confirm the precedence rule (learned > static) works
       with a couple of manual test entries before relying on it
 - [ ] Telegram bot: receive job URL, store it, basic acknowledgment
-- [ ] Job intake v0: detect ATS vendor from URL/domain pattern; log
-      `unknown` rather than guessing
+- [ ] Job intake v0: collect page evidence (URL/domain, visible text,
+      form structure, scripts, page title) and use the LLM to classify
+      or confirm the ATS/application flow. If confidence is low, log
+      `unknown` and ask rather than guessing.
 - [ ] Collect/classify your first 10-20 UAE target links, then choose
       the first vendor handler. If Oracle Taleo or Oracle Recruiting
       Cloud is common in that set, do Oracle first; otherwise pick the
       most common vendor or Greenhouse/Lever for a faster proof.
 - [ ] Decision Engine v0 from day 1: given normalized fields from the
-      first vendor handler, return strict JSON mappings with confidence,
-      answer source, and confirmation flags
+      first vendor handler plus rich field evidence, return strict JSON
+      mappings with confidence, answer source, and confirmation flags.
+      Do not build hard-coded personal-answer mappings as the primary
+      logic.
 - [ ] First vendor handler, fill-only, tested end to end against 2-3
       real postings. The handler owns browser mechanics; the LLM owns
       field interpretation and answer selection.
