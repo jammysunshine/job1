@@ -27,6 +27,7 @@ class JobRecord:
 
 @dataclass
 class FieldEvidence:
+    field_idx: int
     field_id: str
     tag_name: str
     input_type: Optional[str]

@@ -18,6 +18,33 @@ The assistant never clicks submit and never bypasses CAPTCHA.
 """.strip()
 
 
+def _get_client():
+    from google import genai
+
+    if os.environ.get("VERTEX_AI") == "true":
+        project = os.environ.get("GCP_PROJECT_ID")
+        if not project:
+            raise RuntimeError("GCP_PROJECT_ID required when VERTEX_AI=true")
+        location = os.environ.get("GCP_LOCATION", "us-central1")
+        return genai.Client(vertexai=True, project=project, location=location)
+
+    api_key = os.environ.get("GEMINI_LLM_API_KEY") or os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return None
+    return genai.Client(api_key=api_key)
+
+
+def _generate(client, prompt: Dict[str, Any], system_prompt: Optional[str] = None) -> Dict[str, Any]:
+    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+    sp = system_prompt or SYSTEM_PROMPT
+    response = client.models.generate_content(
+        model=model,
+        contents=f"{sp}\n\nInput JSON:\n{json.dumps(prompt)}",
+        config={"response_mime_type": "application/json"},
+    )
+    return json.loads(response.text)
+
+
 def build_intake_prompt(evidence: PageEvidence) -> Dict[str, Any]:
     fields = [field.to_dict() for field in evidence.fields if field.visible]
     return {
@@ -43,26 +70,14 @@ def build_intake_prompt(evidence: PageEvidence) -> Dict[str, Any]:
 def classify_intake(evidence: PageEvidence) -> Dict[str, Any]:
     load_env_file()
     prompt = build_intake_prompt(evidence)
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
+    client = _get_client()
+    if client is None:
         return {
             "mode": "dry_run_no_gemini_api_key",
             "system_prompt": SYSTEM_PROMPT,
             "prompt": prompt,
         }
-
-    try:
-        from google import genai
-    except ImportError as exc:
-        raise RuntimeError("Gemini SDK is not installed. Run: pip install -r requirements.txt") from exc
-
-    client = genai.Client(api_key=api_key)
-    response = client.models.generate_content(
-        model=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"),
-        contents=f"{SYSTEM_PROMPT}\n\nInput JSON:\n{json.dumps(prompt)}",
-        config={"response_mime_type": "application/json"},
-    )
-    return json.loads(response.text)
+    return _generate(client, prompt)
 
 
 def load_env_file(path: Optional[Path] = None) -> None:
