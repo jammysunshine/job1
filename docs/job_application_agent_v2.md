@@ -88,7 +88,8 @@ get smarter rather than repeating stale defaults:
       "source": "telegram_reply",
       "job_url": "...",
       "ats_type": "greenhouse",
-      "timestamp": "..."
+      "timestamp": "...",
+      "confirmed_by_user": true
     }
   ]
 }
@@ -108,12 +109,34 @@ get smarter rather than repeating stale defaults:
 - Two ways an answer gets learned:
   1. **Telegram reply** — when the agent asks you something it can't
      infer, your answer is saved automatically
-  2. **Manual correction confirmation** — if you edit something
-     directly in the filled form before submitting, you confirm back
-     to the agent (Telegram message: "I changed visa answer to X")
-     and that becomes the new learned answer. The agent does NOT
-     silently diff the DOM to detect edits — too fragile, and it
-     would learn from one-off exceptions you didn't mean to generalize
+  2. **Review-diff confirmation** — after the agent fills the form, it
+     snapshots the values it filled. During final review, you can edit
+     fields directly in the browser as usual. Before closing the job,
+     the agent rescans the visible form fields, compares "agent-filled"
+     vs. "user-reviewed" values, and sends you a compact Telegram
+     summary:
+
+     `I noticed 3 changes: relocation: No -> Yes, salary: blank ->
+     AED X, notice period: 60 -> 30 days. Learn these for future UAE
+     roles? [Learn all] [Choose] [Do not learn]`
+
+     This removes the need for you to manually type "I changed X".
+     The agent proposes learned-answer updates automatically, but it
+     does not commit review-diff changes until you confirm the batch.
+- Review-diff learning rules:
+  - Only compare fields that the vendor handler can read reliably and
+    tie back to a stable field label/question
+  - Ignore hidden fields, tracking fields, generated IDs, disabled
+    controls, and fields whose value cannot be read back confidently
+  - If a field changed because of an ATS default, autofill, browser
+    password manager, or unclear widget behavior, show it as
+    `review_needed` rather than learning it automatically
+  - Let you choose per change: learn globally, learn only for this
+    country/role/company scope, ignore once, or never learn this
+    question type
+  - Store the source as `review_diff_confirmed`, with the original
+    agent-filled value, final reviewed value, scope, job URL, ATS type,
+    and timestamp
 - **Matching is semantic, not exact-string**: the Decision Engine
   checks whether a new form's question means the same thing as a
   stored question (e.g. "legally authorized to work here?" vs. "do you
@@ -179,6 +202,9 @@ Used for:
   and ready; sends a screenshot or confirms the browser tab is open;
   waits for you to review and submit it yourself, then confirm back
   ("submitted" / "skipping this one")
+- **Learning checkpoint**: if your final reviewed answers differ from
+  what the agent filled, bot summarizes the changes and lets you learn
+  all, choose specific changes, or ignore them
 
 ### 2.5 Execution Engine (Playwright)
 - Opens job portal, maintains session per ATS (cookie persistence)
@@ -191,6 +217,12 @@ Used for:
   - captures a screenshot per step for debugging/audit
   - reports any mismatch back through Telegram instead of forcing the
     flow forward
+- Supports review-diff learning at the final review checkpoint:
+  - records a structured snapshot of every visible field it filled
+  - waits while you review and edit the form manually
+  - rescans readable visible fields before the job is closed
+  - proposes changed answers back to you as a batch for learning
+  - writes to `learned_answers` only after your Telegram confirmation
 - Detects blockers:
   - **CAPTCHA** → pause, notify user via Telegram, wait for explicit
     "resume" signal from user before continuing
@@ -318,5 +350,3 @@ portals
       unambiguous, then one that should trigger the "which CV?" ask
 - [ ] Second + third vendor handlers
 - [ ] Audit log + simple history view
-
-
