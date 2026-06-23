@@ -107,6 +107,8 @@ class PeopleKsaHandler(VendorHandler):
 
                 if value is None and entry.get("field_context") in ("phone_number",):
                     value = _personal.get("phone") or _personal.get("alternate_phone")
+                if value is None and entry.get("field_context") == "gender":
+                    value = "Male"
 
                 if value is None:
                     continue
@@ -117,6 +119,10 @@ class PeopleKsaHandler(VendorHandler):
                     continue
 
                 el = page.locator("input, select, textarea").nth(match.field_idx)
+
+                is_readonly = await el.evaluate("el => el.hasAttribute('readonly')")
+                if is_readonly:
+                    continue
                 tag = match.tag_name
                 input_type = match.input_type
 
@@ -131,7 +137,7 @@ class PeopleKsaHandler(VendorHandler):
                             await el.uncheck()
                     elif input_type == "radio":
                         val_str = str(value)
-                        parent = el.evaluate("el => el.closest('.radio-group')")
+                        parent = await el.evaluate("el => el.closest('.radio-group')")
                         if parent:
                             option = page.locator(f"label.radio-option:has-text('{val_str}')").first
                             if await option.is_visible():
@@ -140,7 +146,11 @@ class PeopleKsaHandler(VendorHandler):
                             await el.evaluate(f"el => el.checked = true")
                     elif input_type == "file":
                         if cv_path:
-                            await el.set_input_files(cv_path)
+                            cv_abs = Path(cv_path)
+                            if not cv_abs.is_absolute():
+                                cv_abs = ROOT / cv_path
+                            await el.set_input_files(str(cv_abs))
+                            await el.evaluate("el => { el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }")
                     elif input_type == "tel":
                         fill_value = str(value)
                         raw_digits = re.sub(r"[^0-9]", "", fill_value)
@@ -180,10 +190,15 @@ class PeopleKsaHandler(VendorHandler):
                     errors.append(f"Failed to fill {field_id}: {exc}")
 
             if cv_path:
+                cv_abs = Path(cv_path)
+                if not cv_abs.is_absolute():
+                    cv_abs = ROOT / cv_path
                 file_input = page.locator('input[type="file"]').first
                 if await file_input.count():
                     try:
-                        await file_input.set_input_files(cv_path)
+                        await file_input.set_input_files(str(cv_abs))
+                        await page.wait_for_timeout(500)
+                        await file_input.evaluate("el => { el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }")
                         await page.wait_for_timeout(500)
                         await file_input.evaluate("el => { el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }")
                         await page.wait_for_timeout(500)

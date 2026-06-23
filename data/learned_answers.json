@@ -48,6 +48,18 @@
       "question": "Value for field: cv_upload",
       "answer": "docs/Mohit Mendiratta 022.pdf",
       "source_url": "https://people-ksa.com/job/601"
+    },
+    {
+      "field_context": "phone",
+      "question": "Value for field: phone",
+      "answer": "+971.544.972.975",
+      "source_url": "https://people-ksa.com/job/601"
+    },
+    {
+      "field_context": "gender",
+      "question": "Value for field: gender",
+      "answer": "Male",
+      "source_url": "https://people-ksa.com/job/601"
     }
   ]
 }
