@@ -1,12 +1,298 @@
 personal:
   full_name: "Mohit Mendiratta"
-  email: ""
-  phone: ""
-  location: "UAE"
+  email: "mohit.mendiratta@gmail.com"
+  phone: "+971.544.972.975"
+  alternate_phone: "+91.9971.355.955"
+  location: "Dubai, UAE"
+  nationality: "British"
+  visa_status: "UAE Golden Visa"
+  citizen_of: "UK"
+  other_residency: "Indian OCI"
+  linkedin: "https://www.linkedin.com/in/mohitmendiratta/"
+  headline: "IT + AI LEADER"
+
+summary: >
+  Seasoned digital and GenAI leader, CIO and transformation change
+  specialist with a track record of developing technology strategy as per
+  business vision, leading large digital programs, Agentic AI, E-commerce,
+  Business Intelligence, Analytics, ERP, CRM, machine learning, IoT,
+  security, technology refresh and CEO special projects across UK, Europe,
+  MENA, India and Asia-pacific with P&L accountability.
+
+profile_bullets:
+  - "Won the Nasscom's 'India 3.0 IT innovation of the year' award."
+  - "20+ IT industry awards like CIO100."
+  - "27 years' experience delivering IT strategy, digital + AI products, projects and services, and IT operations."
+  - "Global perspective: British citizen, Indian OCI and UAE golden visa. 70% of career in UK/Europe/Apac/Mena."
+  - "Hands on GenAI experience with tools like Claude, Gemini CLI, Grok, N8N, MCP, Zapier, Twilio, Vapi, Pipecat and Cursor."
+  - "GenAI – Recently launched 10+ enterprise scale mobile apps, 5+ PWA, 20+ Workflows, Voice bots and WhatsApp bots."
+  - "Multiple agentic AI pilots in HR, Finance, Procurement and Ops."
+  - "Huge promoter and believer in spec-driven AI code development and testing."
+  - "Conceive, design, and deliver long-term digital strategy dovetailing into business direction, market dynamics and technology evolution."
+  - "Align quickly with CXO direction and deliver results."
+  - "Evangelist: As hands on AI leader, identify business areas for 10x productivity and enhanced competitiveness."
+  - "Wide experience of managing in a variety of organization constructs, leading cross-functional business teams, globally split across continents, time zones and cultures."
+  - "Very strong procurement negotiations, contracting and legal experience."
+  - "Strong experience of setting shared services & global delivery centers."
+  - "IT budgets, policies, processes, innovation, people management."
+  - "Security, audits, and compliances, NoC, SoC, service desk and data centers."
+  - "5+ years tenure with four organizations (HP, IBM, IndiGo and Americana)"
+  - "Wide experience across multiple verticals like global logistics, restaurants, manufacturing, retail, aviation, telecom, banking, IT services, financial, agribusiness, government verticals in both B2B and B2C etc."
+
+skills:
+  leadership:
+    - CIO
+    - VP IT
+    - Digital Transformation
+    - IT Strategy
+    - P&L Accountability
+    - Cross-functional team leadership
+    - CXO alignment
+    - Innovation
+    - People management
+  ai_ml:
+    - Agentic AI
+    - GenAI
+    - Claude
+    - Gemini CLI
+    - Grok
+    - N8N
+    - MCP
+    - Zapier
+    - Twilio
+    - Vapi
+    - Pipecat
+    - Cursor
+    - Machine Learning
+    - Tensorflow
+    - Keras
+    - Voice AI
+    - Chatbots
+    - Spec-driven AI code development
+    - AI testing
+    - Codex
+    - Antigravity
+    - Langchain
+    - ADK
+    - Prompt Engineering
+    - RAG
+    - Function Calling
+    - LangGraph
+    - LLM Evaluation
+  enterprise:
+    - Oracle ERP (Finance and SCM)
+    - SAP S/4 HANA
+    - SAP HCM (ESS, MSS, LMS, E-recruitment, PMS, payroll)
+    - Microsoft Axapta 2012
+    - Microsoft D365
+    - Salesforce (SFA, CRM)
+    - PowerBI
+    - E-commerce (Magento)
+    - PoS (NCR Aloha)
+    - BoH (Crunchtime)
+    - IoT
+    - MDM
+    - DLP
+    - SASE / ZTNA / CASB
+    - SIEM / SOC / VAPT / SOAR
+    - VoC (Sprinkler)
+  procurement_and_legal:
+    - Procurement negotiations
+    - Contracting
+    - Legal experience
+  operations:
+    - Shared services setup
+    - Global delivery centers
+    - IT budgets and policies
+    - IT processes
+    - Service desk
+    - Data centers
+    - NoC / SoC
+    - Security audits and compliance
+  program_management:
+    - PMP Certified
+    - PRINCE2 Practitioner
+    - MSP Advanced Practitioner
+    - Certified Program Manager (PgMP equivalent)
+    - Agile / SCRUM
+  industry_domain:
+    - Global logistics / Maritime
+    - Restaurants / QSR
+    - Retail (apparel, brick and mortar)
+    - Aviation / Airlines
+    - Manufacturing and agribusiness
+    - Telecom
+    - Banking / Financial
+    - IT Services
+    - Government
+
+work_experience:
+  - company: "DP World (P&O Maritime Logistics)"
+    location: "Dubai, UAE"
+    role: "Head of IT (Vice President - IT)"
+    reports_to: "CEO"
+    start_date: "Jun 2025"
+    end_date: "Present"
+    highlights:
+      - "Leading IT for ~$600 Million BU of $21 Billion DP World, with ports, cargo and 400+ ships/vessels operations in 20+ countries in Americas, Africa, Middle East, Europe, Caspian, Australia."
+      - "Oracle rollout for Finance and SCM for 10+ countries."
+      - "Syria new country port operations and vessels launched."
+      - "Used GenAI to rapidly launch PWA for vessel daily operations."
+      - "20+ internal workflows automated using N8N."
+      - "New security initiatives like DLP, SASE, ZTNA, CASB, SIEM, SOC, VAPT, SOAR etc"
+      - "Agentic AI pilots for HR and Finance."
+      - "Used GenAI tools to create comprehensive BRD for automating crew operations for 80+ offshore vessels, including user stories, figma designs, database schemas and test cases."
+      - "Offshore helpdesk setup for 16x7 support for business and IT apps."
+      - "Vessel fuel efficiency and predictive maintenance pilots."
+
+  - company: "Americana Restaurants"
+    location: "Dubai, UAE"
+    role: "Director - Restaurant Technology"
+    reports_to: ""
+    start_date: "Jun 2019"
+    end_date: "Jun 2025"
+    highlights:
+      - "Leading ~70 strong technology team for Americana, a $2.5 Billion Restaurant operator for brands like KFC, Pizza Hut, Hardee's with 2500 restaurants in 12 countries in middle east on digital transformation journey."
+      - "Transformed and drove the implementation and upgrade of front of house PoS (NCR Aloha) and implemented the first BoH (Crunchtime) for Americana across 2500 restaurants, thereby significantly streamlining almost every aspect of store operations and governance."
+      - "Delivered 10+ Mobile apps assets for KFC, Hardee's Pizza Hut in key geographies like UAE, KSA, Kuwait, Qatar, Egypt, Oman and Bahrain. These are one of the best apps in their respective Franchisor eco-systems and are consistently rated 4.5+ on app stores."
+      - "AI based KFC voice ordering, video analytics-based fraud detection and drive through ordering and speed of service."
+      - "Implemented the Voice of customer VoC platform (Sprinkler) for Americana which helped Americana in identifying and improving various aspects of Customer Service."
+      - "Development of Inhouse Last mile Delivery system custom developed for Americana to replace the partner system."
+      - "Rolled out 1500 self-service Kiosks in 6 gulf countries, enhancing customer experience, digitalizing the ordering journey and generating value via cost efficiencies and increases transactions and average checks."
+      - "Led the Covid strategy for IT by bringing Innovative projects like curbside, Carhop Tablets, QR codes and many others for contactless, cashless, and frictionless consumer experience."
+
+  - company: "AB Mauri (part of AB Foods)"
+    location: "South and South East Asia"
+    role: "IT Head – SSEA"
+    reports_to: "Finance Head"
+    start_date: "Nov 2018"
+    end_date: "Jun 2019"
+    highlights:
+      - "Taking AB Mauri, a manufacturing and agribusiness across India, Pakistan, Malaysia, Vietnam, Sri Lanka, Philippines and Indonesia from legacy ERP to Axapta 2012 & Microsoft D365."
+
+  - company: "V2 Retail Ltd"
+    location: ""
+    role: "CIO and VP"
+    reports_to: "Founder CMD"
+    start_date: "Mar 2018"
+    end_date: "Nov 2018"
+    highlights:
+      - "V2 Retail Digital, a $1 Billion brick and mortar apparels stores company on a growth journey trebling from 50 to 150 stores."
+      - "S/4 HANA rollout and E-commerce B2B and B2C using Magento Enterprise."
+      - "Created an Innovation lab for AI, ML using Python, Tensorflow, Keras."
+      - "Kick started 30+ projects including PowerBI, CRM, Android POS, Supplier portal, MDM, Mobile apps for Retail and warehouse."
+      - "IoT projects for stopping Diesel pilferage and power savings."
+
+  - company: "Havells India"
+    location: ""
+    role: "General Manager IT"
+    reports_to: "CIO and EVP"
+    start_date: "Sep 2016"
+    end_date: "Mar 2018"
+    highlights:
+      - "Led a team of 70+ members for IT projects, Infra, Ops, Security & PMO."
+      - "Ownership of 90+ ongoing projects including 10+ flagship like SAP HANA, IoT, CRM, SalesForce SFA, Retailer app, Dealer management, D365, PowerBI."
+
+  - company: "IndiGo Airlines - InterGlobe Enterprises"
+    location: ""
+    role: "General Manager IT"
+    reports_to: "Group CIO"
+    start_date: "Jun 2011"
+    end_date: "Sep 2016"
+    highlights:
+      - "Cargo business fully automated – Sales, operations, finance and revenue accounting and customer mobile app for track and trace."
+      - "SAP HCM rollout covering ESS, MSS, LMS, E-recruitment, PMS and payroll."
+      - "Led a multi-million IT Shared services initiative. Helped to define and deliver vision, strategy and benefits delivery for a new collocated data center, DR and private cloud, ITSM tools and service desk, security initiatives like DLP, MDM and managed IT services."
+
+  - company: "IBM"
+    location: "UK / Japan / India / Spain / Italy / Korea"
+    role: "Delivery Management"
+    start_date: "Jun 2006"
+    end_date: "Jun 2011"
+    highlights:
+      - "Multiple long term on-site projects in UK, Korea, Spain, Japan, Italy in Delivery management roles – 5 years."
+      - "Banking, automotive, financial, retail and telecom projects."
+
+  - company: "HP UK (Agilent Technologies)"
+    location: "Edinburgh, Scotland"
+    role: "Software Engineer"
+    start_date: "Jul 2001"
+    end_date: "Nov 2006"
+    highlights:
+      - "Telecom SONET/SDH embedded product development – 3 years."
+      - "Telecom OSS software product development – 2 years."
+
+  - company: "Ascom"
+    location: "Switzerland / Belgium"
+    role: "Software Engineer"
+    start_date: "Nov 1999"
+    end_date: "May 2001"
+    highlights:
+      - "C/C++ PBX product development – Switzerland"
+      - "C/C++ Telecom product development – Belgium"
+
+  - company: "HCL Infosystems Ltd"
+    location: ""
+    role: "Software Programmer"
+    start_date: "Jun 1998"
+    end_date: "Oct 1999"
+    highlights:
+      - "C/C++ Software Programmer in Computer Telephony Integration (CTI)"
+
+education:
+  - degree: "Bachelor of Engineering (B.E) with First Class Honors"
+    institution: "Delhi Institute of Technology (DIT), Delhi University (now renamed as NSIT)"
+    start_year: "1994"
+    end_year: "1998"
+    details: "Top 10 engineering institute in India. Finished top 10 with 79.89%"
+
+  - degree: "Executive MBA in IT"
+    institution: "UBI Belgium"
+    start_year: ""
+    end_year: ""
+
+  - degree: "Executive Leadership Programme"
+    institution: "IIM Ahmedabad"
+    start_year: ""
+    end_year: ""
+
+certifications:
+  - name: "PMP Certified"
+  - name: "PRINCE2 Practitioner"
+  - name: "Certified Program Manager (PgMP Equivalent)"
+  - name: "MSP Advanced Practitioner"
+    note: "One of 9000 people in the world to be accredited at MSP Advanced Practitioner"
+  - name: "ITIL V3 Foundation"
+  - name: "Six Sigma White Belt"
+  - name: "SCRUM Workshop"
+  - name: "Certified Risk Manager – MoR"
+  - name: "Certified Change Manager"
+
+languages:
+  - "English (Fluent)"
+  - "Hindi"
+
+personal_details:
+  marital_status: "Married"
+  children: "Two daughters"
+  interests: "Enjoy keeping fit"
+
+achievements:
+  - "Won the Nasscom's 'India 3.0 IT innovation of the year' award."
+  - "20+ IT industry awards like CIO100."
+  - "One of 9000 people in the world to be accredited at MSP Advanced Practitioner."
 
 preferences:
   target_countries:
-    - "UAE"
+    - "global"
+  willing_to_relocate: true
+  notice_period_days: 0
+  current_salary:
+    amount: 50000
+    currency: "AED"
+  expected_salary:
+    amount: 50000
+    currency: "AED"
   requires_manual_confirmation_for:
     - salary
     - visa_sponsorship
@@ -14,4 +300,3 @@ preferences:
     - notice_period
     - work_authorization
     - legal_declarations
-
