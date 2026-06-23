@@ -291,9 +291,11 @@ preferences:
   current_salary:
     amount: 50000
     currency: "AED"
+    frequency: "Monthly"
   expected_salary:
     amount: 50000
     currency: "AED"
+    frequency: "Monthly"
   requires_manual_confirmation_for:
     - salary
     - visa_sponsorship

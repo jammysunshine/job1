@@ -60,8 +60,11 @@ class CareersPageHandler(VendorHandler):
 
         result = FillResult(status="started")
         errors: List[str] = []
+        p = None
+        browser = None
 
-        async with async_playwright() as p:
+        try:
+            p = await async_playwright().start()
             browser = await p.chromium.launch(headless=self.headless)
             page = await browser.new_page()
             await page.goto(url, wait_until="domcontentloaded", timeout=60000)
@@ -78,6 +81,13 @@ class CareersPageHandler(VendorHandler):
 
             live_fields = await self._extract_fields(page)
             live_by_idx = {f.field_idx: f for f in live_fields}
+
+            field_contexts = {}
+            for entry in field_mapping.get("fields", []):
+                ctx = entry.get("field_context")
+                fid = entry.get("field_id")
+                if ctx and fid:
+                    field_contexts[fid] = ctx
 
             filled = []
             for entry in field_mapping.get("fields", []):
@@ -125,7 +135,11 @@ class CareersPageHandler(VendorHandler):
                             await el.set_input_files(cv_path)
                     else:
                         await el.fill(str(value))
-                    filled.append({"field_id": field_id, "value": value})
+                    filled.append({
+                        "field_id": field_id,
+                        "field_context": field_contexts.get(field_id) or entry.get("field_context"),
+                        "value": value,
+                    })
                 except Exception as exc:
                     errors.append(f"Failed to fill {field_id}: {exc}")
 
@@ -134,7 +148,7 @@ class CareersPageHandler(VendorHandler):
                 if await file_input.count():
                     try:
                         await file_input.set_input_files(cv_path)
-                        filled.append({"field_id": "file_upload", "value": cv_path})
+                        filled.append({"field_id": "file_upload", "field_context": "cv_upload", "value": cv_path})
                     except Exception as exc:
                         errors.append(f"CV upload failed: {exc}")
 
@@ -151,32 +165,62 @@ class CareersPageHandler(VendorHandler):
 
             if not self.headless:
                 self._save_learned_answers(filled, form_url)
-                from ..telegram_bot import send_message
-                await send_message(
-                    f"Form filled for: {form_url}\n\n"
-                    "Review and edit fields in the browser. "
-                    "Send 'save' to me here when ready — I'll capture your "
-                    "adjustments as learned answers, then you can submit."
-                )
-                print("\nBrowser open — review and edit fields in the browser.")
-                print("Send 'save' to this Telegram chat when ready to capture adjustments.")
-                TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+                job_slug = self._safe_slug(form_url)
+                try:
+                    from ..telegram_bot import send_message
+                    await send_message(
+                        f"Form filled for: {form_url}\n\n"
+                        f"Browser is open. Your slug: {job_slug}\n"
+                        "Edit fields in the browser, then send:\n"
+                        f"  save {job_slug}\n"
+                        "to capture adjustments as learned answers."
+                    )
+                except Exception:
+                    pass
+                print(f"\nBrowser open — job slug: {job_slug}")
+                print(f"Send 'save {job_slug}' to Telegram when ready to capture.")
+                token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
                 chat_id = self._load_chat_id()
                 last_update_id = 0
                 while True:
                     await asyncio.sleep(3)
-                    if TELEGRAM_TOKEN and chat_id:
-                        msgs = self._poll_telegram(TELEGRAM_TOKEN, chat_id, last_update_id)
+                    if not token or not chat_id:
+                        continue
+                    try:
+                        msgs = self._poll_telegram(token, chat_id, last_update_id)
                         for msg_text, upd_id in msgs:
                             last_update_id = max(last_update_id, upd_id)
-                            if msg_text.strip().lower() in ("save", "capture", "learn"):
-                                current = await self._read_current_values(page, live_fields)
+                            parts = msg_text.strip().lower().split(None, 1)
+                            cmd = parts[0] if parts else ""
+                            target = parts[1] if len(parts) > 1 else ""
+                            if cmd in ("save", "capture", "learn") and (not target or target == job_slug):
+                                current = await self._read_current_values(page, live_fields, field_contexts)
                                 self._save_learned_answers(current, form_url)
                                 self._reply_telegram(
-                                    TELEGRAM_TOKEN, chat_id,
-                                    f"Saved {len(current)} field values. You can submit now."
+                                    token, chat_id,
+                                    f"Saved {len(current)} field values for {job_slug}. You can submit now."
                                 )
-                                print(f"Captured {len(current)} field values — saved to learned_answers.json")
+                                print(f"Captured {len(current)} values — saved to learned_answers.json")
+                    except Exception:
+                        pass
+            else:
+                if browser and p:
+                    await browser.close()
+                    await p.stop()
+        except Exception as exc:
+            errors.append(str(exc))
+            result.status = "filled_with_errors"
+            result.errors = errors
+        finally:
+            if self.headless and browser and p:
+                try:
+                    await browser.close()
+                except Exception:
+                    pass
+                try:
+                    await p.stop()
+                except Exception:
+                    pass
 
         return result
 
@@ -234,21 +278,22 @@ class CareersPageHandler(VendorHandler):
         if path.exists():
             existing = json.loads(path.read_text())
         answers = existing.get("answers", [])
-        seen_questions = {a.get("question") for a in answers}
+        seen_contexts = {a.get("field_context") for a in answers if a.get("field_context")}
         for f in filled:
-            question = f"Value for field: {f['field_id']}"
-            if question not in seen_questions:
-                answers.append({
-                    "field_context": f["field_id"],
-                    "question": question,
-                    "answer": str(f["value"]),
-                    "source_url": form_url,
-                })
-                seen_questions.add(question)
+            ctx = f.get("field_context")
+            if not ctx or ctx in seen_contexts:
+                continue
+            answers.append({
+                "field_context": ctx,
+                "question": f"Value for field: {ctx}",
+                "answer": str(f["value"]),
+                "source_url": form_url,
+            })
+            seen_contexts.add(ctx)
         path.write_text(json.dumps({"answers": answers}, indent=2))
 
     async def _read_current_values(
-        self, page, live_fields: List[FieldEvidence]
+        self, page, live_fields: List[FieldEvidence], field_contexts: Optional[Dict[str, str]] = None
     ) -> List[Dict[str, Any]]:
         values = []
         locator = page.locator("input, select, textarea")
@@ -263,7 +308,8 @@ class CareersPageHandler(VendorHandler):
                     val = "true" if await el.is_checked() else "false"
                 else:
                     val = await el.input_value()
-                values.append({"field_id": f.field_id, "value": val})
+                ctx = (field_contexts or {}).get(f.field_id)
+                values.append({"field_id": f.field_id, "field_context": ctx, "value": val})
             except Exception:
                 pass
         return values

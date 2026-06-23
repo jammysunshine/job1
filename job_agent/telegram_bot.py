@@ -7,8 +7,9 @@ import re
 from pathlib import Path
 from typing import Optional
 
-from telegram import Update
+from telegram import Bot, Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from telegram.request import HTTPXRequest
 
 from .models import JobRecord, utc_now_iso
 from .storage import ROOT, append_history, ensure_data_dirs
@@ -78,15 +79,28 @@ def load_chat_id() -> Optional[int]:
     return None
 
 
-async def send_message(text: str) -> bool:
+_bot_instance: Optional[Bot] = None
+
+
+def _get_bot() -> Optional[Bot]:
+    global _bot_instance
+    if _bot_instance:
+        return _bot_instance
     load_env()
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    if not token:
+        return None
+    _bot_instance = Bot(token=token, request=HTTPXRequest(connect_timeout=10, read_timeout=10))
+    return _bot_instance
+
+
+async def send_message(text: str) -> bool:
+    bot = _get_bot()
     chat_id = load_chat_id()
-    if not token or not chat_id:
+    if not bot or not chat_id:
         return False
     try:
-        app = Application.builder().token(token).build()
-        await app.bot.send_message(chat_id=chat_id, text=text)
+        await bot.send_message(chat_id=chat_id, text=text)
         return True
     except Exception as exc:
         logger.error("Failed to send Telegram message: %s", exc)

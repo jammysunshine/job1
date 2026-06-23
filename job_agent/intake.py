@@ -134,6 +134,7 @@ async def _extract_fields(page: Any) -> List[FieldEvidence]:
     )
     return [
         FieldEvidence(
+            field_idx=idx,
             field_id=str(item.get("field_id") or f"field_{idx}"),
             tag_name=str(item.get("tag_name") or ""),
             input_type=item.get("input_type"),
