@@ -24,6 +24,7 @@ Rules:
 - Select the best CV variant for this job. If confidence is low (<0.7), flag it.
 - answer_source must be one of: profile, learned_answers, generated, unknown.
 - Return the field_idx unchanged for every field — it is the stable identifier used to locate the field during filling. The field_id may change between page loads for some fields.
+- Cover letter: if a job_description is provided in job_context and you find a field that is clearly a cover letter textarea, write a compelling cover letter (200-400 words) using the candidate's profile to match the specific job. Set answer_source to "generated". If no job_description is available, set cover letter to null and flag it.
 - Return only valid JSON matching the output schema below.
 """.strip()
 

@@ -78,6 +78,21 @@ async def _run_intake(job_url: str, *, headed: bool) -> int:
     return 0
 
 
+async def _scrape_job_description(job_url: str) -> Optional[str]:
+    from playwright.async_api import async_playwright
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
+            await page.goto(job_url, wait_until="domcontentloaded", timeout=30000)
+            await page.wait_for_timeout(2000)
+            text = await page.evaluate("() => document.body.innerText")
+            await browser.close()
+            return text[:6000]
+    except Exception:
+        return None
+
+
 async def _run_fill(job_url: str, *, ats: Optional[str], headed: bool, dry_run: bool) -> int:
     record = JobRecord(job_url=job_url)
     append_history(record.to_dict())
@@ -100,10 +115,14 @@ async def _run_fill(job_url: str, *, ats: Optional[str], headed: bool, dry_run: 
     print(f"\nDiscovered {len(fields)} fields on {form_url}")
     print(f"Screenshot: {screenshot_path}\n")
 
+    jd_text = await _scrape_job_description(job_url)
     job_context = {
         "job_url": job_url,
         "form_url": form_url,
     }
+    if jd_text:
+        job_context["job_description"] = jd_text
+
     mapping = map_fields(fields, job_context=job_context)
 
     print(json.dumps(mapping, indent=2))

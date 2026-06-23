@@ -55,93 +55,104 @@ class CareersPageHandler(VendorHandler):
         result = FillResult(status="started")
         errors: List[str] = []
 
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=self.headless)
-            page = await browser.new_page()
-            await page.goto(url, wait_until="domcontentloaded", timeout=60000)
-            await page.wait_for_timeout(2000)
+        p = await async_playwright().start()
+        browser = await p.chromium.launch(
+            headless=self.headless,
+            args=["--start-maximized"] if not self.headless else None,
+        )
+        page = await browser.new_page()
+        await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+        await page.wait_for_timeout(2000)
 
-            apply_btn = page.locator("text=Apply now").first
-            if await apply_btn.is_visible():
-                await apply_btn.click()
-                await page.wait_for_timeout(3000)
+        apply_btn = page.locator("text=Apply now").first
+        if await apply_btn.is_visible():
+            await apply_btn.click()
+            await page.wait_for_timeout(3000)
 
-            form_url = page.url
-            await page.wait_for_load_state("networkidle", timeout=10000)
-            await page.wait_for_timeout(2000)
+        form_url = page.url
+        await page.wait_for_load_state("networkidle", timeout=10000)
+        await page.wait_for_timeout(2000)
 
-            live_fields = await self._extract_fields(page)
-            live_by_idx = {f.field_idx: f for f in live_fields}
+        live_fields = await self._extract_fields(page)
+        live_by_idx = {f.field_idx: f for f in live_fields}
 
-            filled = []
-            for entry in field_mapping.get("fields", []):
-                field_idx = entry.get("field_idx")
-                field_id = entry.get("field_id")
-                value = entry.get("value")
-                if field_idx is None or not field_id or value is None:
-                    continue
+        filled = []
+        for entry in field_mapping.get("fields", []):
+            field_idx = entry.get("field_idx")
+            field_id = entry.get("field_id")
+            value = entry.get("value")
+            if field_idx is None or not field_id or value is None:
+                continue
 
-                match = live_by_idx.get(field_idx)
-                if match is None:
-                    errors.append(f"Field not found: idx={field_id} id={field_id}")
-                    continue
+            match = live_by_idx.get(field_idx)
+            if match is None:
+                errors.append(f"Field not found: idx={field_idx} id={field_id}")
+                continue
 
-                el = page.locator("input, select, textarea").nth(match.field_idx)
+            el = page.locator("input, select, textarea").nth(match.field_idx)
 
-                tag = match.tag_name
-                input_type = match.input_type
+            tag = match.tag_name
+            input_type = match.input_type
 
-                is_readonly_file = (
-                    tag == "input"
-                    and input_type in ("text", None)
-                    and (
-                        (match.placeholder and "attachment" in match.placeholder.lower())
-                        or (match.nearby_text and any(
-                            kw in match.nearby_text.lower()
-                            for kw in ("upload", "cv", "resume", "attachment", "file")
-                        ))
-                    )
+            is_readonly_file = (
+                tag == "input"
+                and input_type in ("text", None)
+                and (
+                    (match.placeholder and "attachment" in match.placeholder.lower())
+                    or (match.nearby_text and any(
+                        kw in match.nearby_text.lower()
+                        for kw in ("upload", "cv", "resume", "attachment", "file")
+                    ))
                 )
-                if is_readonly_file:
-                    continue
+            )
+            if is_readonly_file:
+                continue
 
+            try:
+                if tag == "select":
+                    await el.select_option(label=value)
+                elif input_type == "checkbox":
+                    checked = await el.is_checked()
+                    if (value is True or str(value).lower() == "on") and not checked:
+                        await el.check()
+                    elif (value is False or str(value).lower() == "off") and checked:
+                        await el.uncheck()
+                elif input_type == "file":
+                    if cv_path:
+                        await el.set_input_files(cv_path)
+                else:
+                    await el.fill(str(value))
+                filled.append({"field_id": field_id, "value": value})
+            except Exception as exc:
+                errors.append(f"Failed to fill {field_id}: {exc}")
+
+        if cv_path:
+            file_input = page.locator('input[type="file"]').first
+            if await file_input.count():
                 try:
-                    if tag == "select":
-                        await el.select_option(label=value)
-                    elif input_type == "checkbox":
-                        checked = await el.is_checked()
-                        if (value is True or str(value).lower() == "on") and not checked:
-                            await el.check()
-                        elif (value is False or str(value).lower() == "off") and checked:
-                            await el.uncheck()
-                    elif input_type == "file":
-                        if cv_path:
-                            await el.set_input_files(cv_path)
-                    else:
-                        await el.fill(str(value))
-                    filled.append({"field_id": field_id, "value": value})
+                    await file_input.set_input_files(cv_path)
+                    filled.append({"field_id": "file_upload", "value": cv_path})
                 except Exception as exc:
-                    errors.append(f"Failed to fill {field_id}: {exc}")
+                    errors.append(f"CV upload failed: {exc}")
 
-            if cv_path:
-                file_input = page.locator('input[type="file"]').first
-                if await file_input.count():
-                    try:
-                        await file_input.set_input_files(cv_path)
-                        filled.append({"field_id": "file_upload", "value": cv_path})
-                    except Exception as exc:
-                        errors.append(f"CV upload failed: {exc}")
+        await page.wait_for_timeout(1000)
+        slug = self._safe_slug(form_url)
+        screenshot_path = str(SCREENSHOT_DIR / f"{slug}-filled.png")
+        await page.screenshot(path=screenshot_path, full_page=True)
 
-            await page.wait_for_timeout(1000)
-            slug = self._safe_slug(form_url)
-            screenshot_path = str(SCREENSHOT_DIR / f"{slug}-filled.png")
-            await page.screenshot(path=screenshot_path, full_page=True)
+        result.status = "filled_awaiting_review" if not errors else "filled_with_errors"
+        result.filled_fields = filled
+        result.errors = errors
+        result.screenshot_path = screenshot_path
+        result.form_url = form_url
 
-            result.status = "filled_awaiting_review" if not errors else "filled_with_errors"
-            result.filled_fields = filled
-            result.errors = errors
-            result.screenshot_path = screenshot_path
-            result.form_url = form_url
+        if not self.headless:
+            print("\nBrowser is open for your review. Check all fields before submitting.")
+            print("Press Enter in this terminal to close the browser once done.")
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, input, "")
+            await browser.close()
+            await p.stop()
 
         return result
 
