@@ -53,13 +53,13 @@ concrete to match against:
 ```yaml
 cv_variants:
   - name: "CIO_Leadership"
-    file_path: /path/to/Mohit_CIO_Leadership.pdf
+    file_path: /path/to/Mohit Mendiratta 022.pdf
     tags: [leadership, P&L, digital strategy, CIO, VP, transformation]
   - name: "Hands_on_AI_Technical"
     file_path: /path/to/Mohit_AI_Technical.pdf
     tags: [agentic AI, GenAI, hands-on, automation, Playwright, builder]
-  - name: "Default"
-    file_path: /path/to/Mohit_General.pdf
+  - name: "Program manager"
+    file_path: /path/to/Mohit_PM.pdf
     tags: []   # fallback if nothing else matches and you don't want
                # to be asked every single time — your call whether to
                # keep this or always ask when ambiguous
@@ -127,6 +127,13 @@ get smarter rather than repeating stale defaults:
   learned answers, preferences
 - Outputs: `{ field_mapping, missing_fields_questions[], cv_variant,
   cv_variant_confidence, cover_letter_needed }`
+- Used from day 1, including the first MVP vendor. The LLM is the
+  planner/mapping layer; it decides what each visible form question
+  likely means and what answer should be used.
+- The LLM does NOT directly operate the browser. Vendor handlers remain
+  deterministic guardrails: they discover fields, expose normalized
+  field metadata to the LLM, validate the returned mapping, and perform
+  the actual Playwright actions.
 - Output must be strict structured JSON, not free-form prose. Each
   mapped field should include:
   - `field_id`
@@ -144,6 +151,10 @@ get smarter rather than repeating stale defaults:
   questions, legal declarations) default to
   `requires_user_confirmation: true` unless the answer is explicitly
   known for this exact context.
+- If the LLM returns an answer that does not match an allowed option,
+  targets a missing/hidden field, has low confidence, or conflicts with
+  vendor-handler validation, the system asks you rather than trying to
+  repair the mapping silently.
 - **CV variant selection is a recommendation, not a silent choice**:
   - If confidence is high (job clearly matches one variant's tag — e.g.
     job title/description strongly skews "technical/hands-on" and you
@@ -292,33 +303,20 @@ portals
       the first vendor handler. If Oracle Taleo or Oracle Recruiting
       Cloud is common in that set, do Oracle first; otherwise pick the
       most common vendor or Greenhouse/Lever for a faster proof.
+- [ ] Decision Engine v0 from day 1: given normalized fields from the
+      first vendor handler, return strict JSON mappings with confidence,
+      answer source, and confirmation flags
 - [ ] First vendor handler, fill-only, tested end to end against 2-3
-      real postings
+      real postings. The handler owns browser mechanics; the LLM owns
+      field interpretation and answer selection.
 - [ ] Step-level verification: read back values, catch validation
       errors, and save screenshots
 - [ ] CAPTCHA detection → Telegram pause/resume loop
 - [ ] Final-review checkpoint: confirm the agent stops cleanly and
       waits, every single time, with no path to auto-submit
-- [ ] Decision Engine structured-output contract with confidence,
-      answer source, and confirmation flags
 - [ ] CV variant selection logic — test with a job that should be
       unambiguous, then one that should trigger the "which CV?" ask
 - [ ] Second + third vendor handlers
 - [ ] Audit log + simple history view
 
----
 
-## 7. Core Constraints (non-negotiable, build these in at the code level)
-- Agent NEVER clicks submit. Not configurable.
-- Agent NEVER attempts to solve, bypass, or click through a CAPTCHA.
-  It pauses and waits for the user, every time, no exceptions.
-- Unknown ATS vendors are reported, not guessed at with a generic
-  fallback (until a Tier 3 fallback is explicitly built and tested)
-- Ask before adding new dependencies or vendors beyond this list
-
----
-
-## 8. Key Design Principle
-This is a fill assistant, not an autonomous applicant. It removes the
-repetitive re-typing across ATS portals. You remain the one who reviews
-substance and clicks submit, every single time, on every application.
