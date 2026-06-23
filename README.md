@@ -15,11 +15,14 @@ pip install -r requirements.txt
 python -m playwright install chromium
 ```
 
-Optional for real LLM calls:
+Add your Gemini key to `.env` for real LLM calls:
 
 ```bash
-export OPENAI_API_KEY=...
+GEMINI_API_KEY=...
+GEMINI_MODEL=gemini-2.5-flash
 ```
+
+`.env` is ignored by git. Keep `.env.example` as the shareable template.
 
 ## First Slice
 
@@ -28,4 +31,3 @@ python -m job_agent.cli intake "https://example.com/job"
 ```
 
 Artifacts are written under `data/`.
-

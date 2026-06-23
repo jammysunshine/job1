@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Dict
+from pathlib import Path
+from typing import Any, Dict, Optional
 
 from .models import PageEvidence
+from .storage import ROOT
 
 
 SYSTEM_PROMPT = """
@@ -39,28 +41,41 @@ def build_intake_prompt(evidence: PageEvidence) -> Dict[str, Any]:
 
 
 def classify_intake(evidence: PageEvidence) -> Dict[str, Any]:
+    load_env_file()
     prompt = build_intake_prompt(evidence)
-    api_key = os.environ.get("OPENAI_API_KEY")
+    api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         return {
-            "mode": "dry_run_no_openai_api_key",
+            "mode": "dry_run_no_gemini_api_key",
             "system_prompt": SYSTEM_PROMPT,
             "prompt": prompt,
         }
 
     try:
-        from openai import OpenAI
+        from google import genai
     except ImportError as exc:
-        raise RuntimeError("OpenAI package is not installed. Run: pip install -r requirements.txt") from exc
+        raise RuntimeError("Gemini SDK is not installed. Run: pip install -r requirements.txt") from exc
 
-    client = OpenAI(api_key=api_key)
-    response = client.responses.create(
-        model=os.environ.get("JOB_AGENT_MODEL", "gpt-4.1-mini"),
-        input=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": json.dumps(prompt)},
-        ],
-        text={"format": {"type": "json_object"}},
+    client = genai.Client(api_key=api_key)
+    response = client.models.generate_content(
+        model=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"),
+        contents=f"{SYSTEM_PROMPT}\n\nInput JSON:\n{json.dumps(prompt)}",
+        config={"response_mime_type": "application/json"},
     )
-    return json.loads(response.output_text)
+    return json.loads(response.text)
 
+
+def load_env_file(path: Optional[Path] = None) -> None:
+    env_path = path or ROOT / ".env"
+    if not env_path.exists():
+        return
+
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
