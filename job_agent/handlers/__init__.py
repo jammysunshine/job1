@@ -2,6 +2,7 @@ from typing import Optional
 
 from .base import VendorHandler
 from .careers_page import CareersPageHandler
+from .generic_handler import GenericHandler
 from .people_ksa import PeopleKsaHandler
 from .oracle_recruiting import OracleRecruitingHandler
 
@@ -14,4 +15,4 @@ HANDLER_REGISTRY: dict = {
 
 
 def get_handler(ats_type: str) -> Optional[type]:
-    return HANDLER_REGISTRY.get(ats_type)
+    return HANDLER_REGISTRY.get(ats_type, GenericHandler)

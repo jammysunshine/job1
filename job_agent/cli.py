@@ -107,13 +107,18 @@ async def _run_fill(job_url: str, *, ats: Optional[str], headed: bool, dry_run: 
         print(f"Intake classified ATS: {ats} (confidence: {llm_result.get('detection_confidence', 'N/A')})")
 
     handler_cls = get_handler(ats)
-    if not handler_cls:
-        print(f"No handler registered for ATS: {ats}")
-        print(f"Registered handlers: {list(HANDLER_REGISTRY.keys())}")
-        return 1
+    if ats not in HANDLER_REGISTRY:
+        print(f"Using GenericHandler for ATS type: {ats}")
 
     handler = handler_cls(headless=not headed)
-    form_url, fields, screenshot_path = await handler.discover_fields(job_url)
+    try:
+        form_url, fields, screenshot_path = await handler.discover_fields(job_url)
+    except Exception as exc:
+        print(f"\nHandler {handler_cls.__name__} failed: {exc}")
+        print("Falling back to GenericHandler...")
+        from .handlers.generic_handler import GenericHandler
+        handler = GenericHandler(headless=not headed)
+        form_url, fields, screenshot_path = await handler.discover_fields(job_url)
 
     print(f"\nDiscovered {len(fields)} fields on {form_url}")
     print(f"Screenshot: {screenshot_path}\n")
@@ -142,12 +147,11 @@ async def _run_fill(job_url: str, *, ats: Optional[str], headed: bool, dry_run: 
         print("\nDry run — no fields filled.")
         return 0
 
-    if not mapping.get("fields") and ats != "oracle_recruiting_cloud":
-        print("\nNo fields mapped and handler doesn't support dynamic discovery.")
-        print("Cannot fill form.")
-        return 0
+    if not mapping.get("fields"):
+        print("\nNo fields mapped. If the handler supports dynamic discovery,")
+        print("fill_and_stop will remap fields after auth. Proceeding...")
 
-    from .telegram_bot import discover_chat_id as _discover_chat_id
+    from .handlers._shared import discover_chat_id as _discover_chat_id
     chat_path = ROOT / "data" / "telegram_chat_id.txt"
     if not chat_path.exists():
         cid = _discover_chat_id()
@@ -174,6 +178,26 @@ async def _run_fill(job_url: str, *, ats: Optional[str], headed: bool, dry_run: 
             if v.get("name") == cv_variant:
                 cv_path = v.get("file_path")
                 break
+
+    for entry in mapping.get("fields", []):
+        if entry.get("field_context") == "cover_letter" and entry.get("value"):
+            slug = _safe_slug(job_url)
+            cl_dir = ROOT / "data" / "cover_letters"
+            cl_dir.mkdir(parents=True, exist_ok=True)
+            cl_path = cl_dir / f"{slug}.pdf"
+            if not cl_path.exists():
+                try:
+                    from fpdf import FPDF
+                    pdf = FPDF()
+                    pdf.add_page()
+                    pdf.set_font("Helvetica", size=11)
+                    pdf.multi_cell(0, 5, entry["value"])
+                    pdf.output(str(cl_path))
+                except Exception as exc:
+                    print(f"Cover letter PDF generation failed: {exc}")
+                    break
+            entry["value"] = str(cl_path)
+            break
 
     result = await handler.fill_and_stop(job_url, mapping, cv_path=cv_path)
 

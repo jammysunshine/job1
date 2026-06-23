@@ -55,6 +55,30 @@
       "field_context": "gender",
       "question": "Value for field: gender",
       "answer": "Male"
+    },
+    {
+      "field_context": "full_name",
+      "question": "Value for field: full_name",
+      "answer": "Mohit Mendiratta",
+      "source_url": "https://careers.esportsfoundation.com/o/senior-manager-it-infrastructure/c/new?source=LinkedIn+Basic+Jobs"
+    },
+    {
+      "field_context": "email",
+      "question": "Value for field: email",
+      "answer": "mohit.mendiratta@gmail.com",
+      "source_url": "https://careers.esportsfoundation.com/o/senior-manager-it-infrastructure/c/new?source=LinkedIn+Basic+Jobs"
+    },
+    {
+      "field_context": "cover_letter",
+      "question": "Value for field: cover_letter",
+      "answer": "Dear Hiring Team,\n\nI am writing to express my enthusiastic interest in the Senior Manager IT Infrastructure position at Esports Foundation. With over 28 years of extensive experience in enterprise technology, including 10+ years at the CIO/VP level in complex, multi-site global organizations, I am confident in my ability to spearhead your technology agenda and drive transformative growth, particularly within the critical domain of IT infrastructure.\n\nMy career journey, predominantly across the UK, Europe, MENA, and Asia-Pacific, has equipped me with a global perspective in defining and executing multi-year technology strategies. I have led comprehensive technology stacks covering infrastructure, enterprise applications (including major ERP transformations like Oracle, SAP S/4 HANA, Microsoft D365), data and analytics, integration fabrics, and robust cybersecurity frameworks. My experience leading IT for a ~$600 Million business unit of DP World, overseeing operations in 20+ countries, and managing infrastructure for a $2.5 Billion restaurant operator (Americana Restaurants) with 2500 locations, aligns directly with your requirement for leadership in large-scale, institutionally governed environments, ensuring high availability and resilience for critical operations.\n\nI bring a clear vision for the future state of enterprise technology and infrastructure, balancing in-house innovation with strategic partner engagements to deliver tangible value. My expertise extends to building resilient data foundations, implementing stringent cybersecurity postures (e.g., DLP, SASE, ZTNA, SIEM, SOC), and ensuring compliance with national and international regulations. My strong commercial instinct and P&L accountability ensure technology investments are strategically aligned and deliver measurable business outcomes. I am adept at translating complex technological landscapes into commercial language for executive committees and boards.\n\nI have a demonstrated history of driving significant initiatives directly relevant to infrastructure, including setting up new data centers, disaster recovery sites, and private clouds, establishing 16x7 offshore helpdesks, and modernizing security systems. My experience also includes successful implementation and modernization of ERP systems, developing innovative mobile and AI solutions to enhance operational efficiency, and establishing service-oriented IT operations with clear metrics. My certifications, including PMP, PRINCE2, and MSP Advanced Practitioner, underscore my commitment to disciplined program delivery and vendor management, crucial for complex infrastructure projects.\n\nThank you for considering my application. I am eager to discuss how my leadership and technical expertise can contribute to the continued success and growth of Esports Foundation's IT infrastructure.\n\nSincerely,\nMohit Mendiratta",
+      "source_url": "https://careers.esportsfoundation.com/o/senior-manager-it-infrastructure/c/new?source=LinkedIn+Basic+Jobs"
+    },
+    {
+      "field_context": "cv",
+      "question": "Value for field: cv",
+      "answer": "docs/Mohit Mendiratta 022.pdf",
+      "source_url": "https://careers.esportsfoundation.com/o/senior-manager-it-infrastructure/c/new?source=LinkedIn+Basic+Jobs"
     }
   ]
 }
