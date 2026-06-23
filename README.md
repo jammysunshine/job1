@@ -24,10 +24,30 @@ GEMINI_MODEL=gemini-2.5-flash
 
 `.env` is ignored by git. Keep `.env.example` as the shareable template.
 
-## First Slice
+## Commands
 
 ```bash
+# Capture page evidence and classify ATS
 python -m job_agent.cli intake "https://example.com/job"
+
+# Start Telegram bot (polling mode)
+python -m job_agent.cli bot
 ```
 
 Artifacts are written under `data/`.
+
+## Telegram Bot
+
+Add your bot token to `.env`:
+
+```
+TELEGRAM_BOT_TOKEN=your-bot-token-from-@BotFather
+```
+
+For mobile access, expose the bot via ngrok:
+
+```bash
+ngrok http 80
+```
+
+Then set the webhook URL with Telegram API (or just use polling while on your local network).

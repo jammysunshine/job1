@@ -11,6 +11,7 @@ from .intake import capture_page_evidence
 from .llm import classify_intake
 from .models import JobRecord, utc_now_iso
 from .storage import EVIDENCE_DIR, append_history, ensure_data_dirs, write_json
+from .telegram_bot import run_bot
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -21,11 +22,16 @@ def main(argv: Optional[list[str]] = None) -> int:
     intake_parser.add_argument("job_url")
     intake_parser.add_argument("--headless", action="store_true", help="Run browser headless")
 
+    subparsers.add_parser("bot", help="Start Telegram bot (polling)")
+
     args = parser.parse_args(argv)
     ensure_data_dirs()
 
     if args.command == "intake":
         return asyncio.run(_run_intake(args.job_url, headed=not args.headless))
+
+    if args.command == "bot":
+        return run_bot()
 
     parser.error(f"Unknown command: {args.command}")
     return 2
