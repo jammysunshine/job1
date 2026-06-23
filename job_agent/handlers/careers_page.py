@@ -181,28 +181,64 @@ class CareersPageHandler(VendorHandler):
                 print(f"Send 'save {job_slug}' to Telegram when ready to capture.")
                 token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
                 chat_id = self._load_chat_id()
+                telegram_ok = bool(token and chat_id)
+                if not telegram_ok:
+                    print("Telegram not available. Type commands in this terminal:")
+                    print(f"  save {job_slug}    — capture field values")
                 last_update_id = 0
-                while True:
-                    await asyncio.sleep(3)
-                    if not token or not chat_id:
-                        continue
+
+                loop = asyncio.get_event_loop()
+
+                def read_stdin() -> str:
                     try:
-                        msgs = self._poll_telegram(token, chat_id, last_update_id)
-                        for msg_text, upd_id in msgs:
-                            last_update_id = max(last_update_id, upd_id)
-                            parts = msg_text.strip().lower().split(None, 1)
-                            cmd = parts[0] if parts else ""
-                            target = parts[1] if len(parts) > 1 else ""
-                            if cmd in ("save", "capture", "learn") and (not target or target == job_slug):
-                                current = await self._read_current_values(page, live_fields, field_contexts)
-                                self._save_learned_answers(current, form_url)
-                                self._reply_telegram(
-                                    token, chat_id,
-                                    f"Saved {len(current)} field values for {job_slug}. You can submit now."
-                                )
-                                print(f"Captured {len(current)} values — saved to learned_answers.json")
-                    except Exception:
-                        pass
+                        return input("> ").strip()
+                    except (EOFError, KeyboardInterrupt):
+                        return ""
+
+                while True:
+                    cmd = ""
+                    target = ""
+
+                    if telegram_ok:
+                        try:
+                            msgs = self._poll_telegram(token, chat_id, last_update_id)
+                            for msg_text, upd_id in msgs:
+                                last_update_id = max(last_update_id, upd_id)
+                                parts = msg_text.strip().lower().split(None, 1)
+                                c = parts[0] if parts else ""
+                                t = parts[1] if len(parts) > 1 else ""
+                                if c in ("save", "capture", "learn") and (not t or t == job_slug):
+                                    cmd = c
+                                    target = t
+                        except Exception:
+                            pass
+
+                    if not cmd:
+                        try:
+                            fut = loop.run_in_executor(None, read_stdin)
+                            line = await asyncio.wait_for(fut, timeout=3.0)
+                            if line:
+                                parts = line.lower().split(None, 1)
+                                c = parts[0] if parts else ""
+                                t = parts[1] if len(parts) > 1 else ""
+                                if c in ("save", "capture", "learn") and (not t or t == job_slug):
+                                    cmd = c
+                                    target = t
+                        except asyncio.TimeoutError:
+                            pass
+                        except (EOFError, KeyboardInterrupt):
+                            break
+
+                    if cmd:
+                        current = await self._read_current_values(page, live_fields, field_contexts)
+                        self._save_learned_answers(current, form_url)
+                        msg = f"Saved {len(current)} field values for {job_slug}. You can submit now."
+                        if telegram_ok:
+                            try:
+                                self._reply_telegram(token, chat_id, msg)
+                            except Exception:
+                                pass
+                        print(msg)
             else:
                 if browser and p:
                     await browser.close()
@@ -237,11 +273,13 @@ class CareersPageHandler(VendorHandler):
         token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
         if not token:
             return None
+        import ssl
+        ctx = ssl._create_unverified_context()
         url = f"https://api.telegram.org/bot{token}/{method}"
         try:
             body = urllib.parse.urlencode(data).encode()
-            req = urllib.request.Request(url, data=body)
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            req = urllib.request.Request(url, data=body, headers={"User-Agent": "python"})
+            with urllib.request.urlopen(req, timeout=5, context=ctx) as resp:
                 return json.loads(resp.read())
         except Exception:
             return None

@@ -34,32 +34,27 @@
     {
       "field_context": "last_name",
       "question": "Value for field: last_name",
-      "answer": "Mendiratta",
-      "source_url": "https://people-ksa.com/job/601"
+      "answer": "Mendiratta"
     },
     {
       "field_context": "phone_number",
       "question": "Value for field: phone_number",
-      "answer": "+971.544.972.975",
-      "source_url": "https://people-ksa.com/job/601"
+      "answer": "+971544972975"
     },
     {
       "field_context": "cv_upload",
       "question": "Value for field: cv_upload",
-      "answer": "docs/Mohit Mendiratta 022.pdf",
-      "source_url": "https://people-ksa.com/job/601"
+      "answer": "docs/Mohit Mendiratta 022.pdf"
     },
     {
       "field_context": "phone",
       "question": "Value for field: phone",
-      "answer": "+971.544.972.975",
-      "source_url": "https://people-ksa.com/job/601"
+      "answer": "+971544972975"
     },
     {
       "field_context": "gender",
       "question": "Value for field: gender",
-      "answer": "Male",
-      "source_url": "https://people-ksa.com/job/601"
+      "answer": "Male"
     }
   ]
 }

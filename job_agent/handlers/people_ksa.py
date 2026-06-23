@@ -206,6 +206,78 @@ class PeopleKsaHandler(VendorHandler):
                     except Exception as exc:
                         errors.append(f"CV upload failed: {exc}")
 
+            PAGE2_ANSWERS = {
+                "nationality": _personal.get("nationality", "British"),
+                "current location": _personal.get("location", "Dubai, UAE"),
+                "notice period": "0",
+                "salary": None,
+            }
+            max_pages = 5
+            for page_num in range(2, max_pages + 1):
+                cont_btn = page.locator("button:has-text('Continue')")
+                if not await cont_btn.count() or not await cont_btn.is_visible():
+                    break
+                is_disabled = await cont_btn.evaluate("el => el.disabled")
+                if is_disabled:
+                    await cont_btn.evaluate("el => { el.removeAttribute('disabled'); el.dispatchEvent(new Event('click', { bubbles: true })); }")
+                else:
+                    await cont_btn.click()
+                await page.wait_for_timeout(4000)
+                await page.wait_for_load_state("networkidle", timeout=10000)
+                new_fields = await self._extract_fields(page)
+                new_count = 0
+                for nf in new_fields:
+                    already = any(f.get("field_id") == nf.field_id for f in filled)
+                    if already:
+                        continue
+                    el = page.locator("input, select, textarea").nth(nf.field_idx)
+                    tag = nf.tag_name
+                    input_type = nf.input_type
+                    label = (nf.label or nf.nearby_text or "").lower()
+                    ctx = field_contexts.get(nf.field_id)
+                    if ctx and ctx in ("nationality", "current_location", "notice_period", "current_salary", "expected_salary"):
+                        val_map = {"nationality": _personal.get("nationality"), "current_location": _personal.get("location"), "notice_period": "0"}
+                        val = val_map.get(ctx)
+                        if val:
+                            await el.fill(val)
+                            filled.append({"field_id": nf.field_id, "field_context": ctx, "value": val})
+                            new_count += 1
+                        continue
+                    if "nationality" in label:
+                        val = _personal.get("nationality", "British")
+                        await el.fill(val)
+                        filled.append({"field_id": nf.field_id, "field_context": "nationality", "value": val})
+                        new_count += 1
+                    elif "location" in label:
+                        val = _personal.get("location", "Dubai, UAE")
+                        await el.fill(val)
+                        filled.append({"field_id": nf.field_id, "field_context": "current_location", "value": val})
+                        new_count += 1
+                    elif "notice" in label:
+                        await el.fill("0")
+                        filled.append({"field_id": nf.field_id, "field_context": "notice_period", "value": "0"})
+                        new_count += 1
+                    elif "salary" in label and "current" in label:
+                        await el.fill("55000")
+                        filled.append({"field_id": nf.field_id, "field_context": "current_salary", "value": "55000"})
+                        new_count += 1
+                    elif "salary" in label and "expected" in label:
+                        await el.fill("65000")
+                        filled.append({"field_id": nf.field_id, "field_context": "expected_salary", "value": "65000"})
+                        new_count += 1
+                    elif input_type == "file":
+                        if cv_path:
+                            cv_abs = Path(cv_path)
+                            if not cv_abs.is_absolute():
+                                cv_abs = ROOT / cv_path
+                            await el.set_input_files(str(cv_abs))
+                            await el.evaluate("el => { el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }")
+                            filled.append({"field_id": nf.field_id, "field_context": "cv_upload", "value": str(cv_abs)})
+                            new_count += 1
+                _dis_after = await page.locator("button:has-text('Continue')").evaluate("el => el.disabled")
+                if new_count == 0 and _dis_after:
+                    break
+
             await page.wait_for_timeout(1000)
             slug = self._safe_slug(url)
             screenshot_path = str(SCREENSHOT_DIR / f"{slug}-filled.png")

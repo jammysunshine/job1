@@ -12,11 +12,14 @@ from .handlers import HANDLER_REGISTRY, get_handler
 from .intake import _safe_slug, capture_page_evidence
 from .llm import classify_intake
 from .models import JobRecord, utc_now_iso
-from .storage import EVIDENCE_DIR, append_history, ensure_data_dirs, write_json
+from .storage import EVIDENCE_DIR, ROOT, append_history, ensure_data_dirs, write_json
 from .telegram_bot import run_bot
 
 
 def main(argv: Optional[list[str]] = None) -> int:
+    from .telegram_bot import load_env as _load_env
+    _load_env()
+
     parser = argparse.ArgumentParser(prog="job-agent")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -135,11 +138,33 @@ async def _run_fill(job_url: str, *, ats: Optional[str], headed: bool, dry_run: 
     record.ats_type = ats
     append_history(record.to_dict())
 
-    if dry_run or not mapping.get("fields"):
+    if dry_run:
         print("\nDry run — no fields filled.")
         return 0
 
-    print("\nFilling form...")
+    if not mapping.get("fields") and ats != "oracle_recruiting_cloud":
+        print("\nNo fields mapped and handler doesn't support dynamic discovery.")
+        print("Cannot fill form.")
+        return 0
+
+    from .telegram_bot import discover_chat_id as _discover_chat_id
+    chat_path = ROOT / "data" / "telegram_chat_id.txt"
+    if not chat_path.exists():
+        cid = _discover_chat_id()
+        if cid:
+            print("Chat ID auto-discovered from Telegram! Notifications active.\n")
+        else:
+            print("\n⚠️  Message @Mohit_job_bot on Telegram (any text), then press Enter.")
+            print("   Or press Ctrl+C to skip Telegram and use terminal input.")
+            input("   Press Enter when ready... ")
+            cid = _discover_chat_id()
+            if not cid:
+                print("   Still no chat ID. Proceeding without Telegram.")
+                print("   PIN-based forms will fall back to terminal input.\n")
+            else:
+                print("   Chat ID registered! Telegram notifications active.\n")
+
+    print("Filling form...")
     cv_path = None
     cv_variant = mapping.get("cv_variant")
     if cv_variant:

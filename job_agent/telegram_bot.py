@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import re
+import urllib.parse
+import urllib.request
 from pathlib import Path
 from typing import Optional
 
@@ -79,6 +82,35 @@ def load_chat_id() -> Optional[int]:
     return None
 
 
+def discover_chat_id() -> Optional[int]:
+    load_env()
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    if not token:
+        return None
+    try:
+        import ssl
+        ctx = ssl._create_unverified_context()
+        url = f"https://api.telegram.org/bot{token}/getUpdates?timeout=2"
+        req = urllib.request.Request(url, headers={"User-Agent": "python"})
+        resp = urllib.request.urlopen(req, timeout=15, context=ctx)
+        data = json.loads(resp.read())
+        chats = {}
+        for update in data.get("result", []):
+            msg = update.get("message", {}) or update.get("edited_message", {})
+            cid = msg.get("chat", {}).get("id")
+            date = msg.get("date", 0)
+            if cid:
+                chats[cid] = max(chats.get(cid, 0), date)
+        if chats:
+            latest = max(chats, key=chats.get)
+            save_chat_id(latest)
+            logger.info("Discovered chat_id %s from Telegram updates", latest)
+            return latest
+    except Exception as exc:
+        logger.warning("Failed to discover chat_id: %s", exc)
+    return None
+
+
 _bot_instance: Optional[Bot] = None
 
 
@@ -95,12 +127,18 @@ def _get_bot() -> Optional[Bot]:
 
 
 async def send_message(text: str) -> bool:
-    bot = _get_bot()
+    load_env()
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = load_chat_id()
-    if not bot or not chat_id:
+    if not token or not chat_id:
         return False
     try:
-        await bot.send_message(chat_id=chat_id, text=text)
+        import ssl
+        ctx = ssl._create_unverified_context()
+        data = urllib.parse.urlencode({"chat_id": chat_id, "text": text}).encode()
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        req = urllib.request.Request(url, data=data, headers={"User-Agent": "python"})
+        urllib.request.urlopen(req, timeout=15, context=ctx)
         return True
     except Exception as exc:
         logger.error("Failed to send Telegram message: %s", exc)
