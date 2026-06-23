@@ -1,0 +1,17 @@
+personal:
+  full_name: "Mohit Mendiratta"
+  email: ""
+  phone: ""
+  location: "UAE"
+
+preferences:
+  target_countries:
+    - "UAE"
+  requires_manual_confirmation_for:
+    - salary
+    - visa_sponsorship
+    - relocation
+    - notice_period
+    - work_authorization
+    - legal_declarations
+

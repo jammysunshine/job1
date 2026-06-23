@@ -1,0 +1,25 @@
+cv_variants:
+  - name: "CIO_Leadership"
+    file_path: "docs/Mohit Mendiratta 022.pdf"
+    tags:
+      - leadership
+      - P&L
+      - digital strategy
+      - CIO
+      - VP
+      - transformation
+  - name: "Hands_on_AI_Technical"
+    file_path: "/path/to/Mohit_AI_Technical.pdf"
+    tags:
+      - agentic AI
+      - GenAI
+      - hands-on
+      - automation
+      - Playwright
+      - builder
+  - name: "Program manager"
+    file_path: "/path/to/Mohit_PM.pdf"
+    tags:
+      - program management
+      - delivery
+      - transformation
