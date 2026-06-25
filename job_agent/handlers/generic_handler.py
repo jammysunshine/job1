@@ -275,6 +275,8 @@ class GenericHandler(VendorHandler):
             value = entry.get("value")
             if value is None:
                 continue
+            if isinstance(value, str) and value.strip().lower() in ("null", "none", ""):
+                continue
             field = None
             if entry.get("field_idx") is not None:
                 field = live_by_idx.get(int(entry["field_idx"]))

@@ -43,6 +43,7 @@ Rules:
   * "sexual_orientation" / "Sexual Orientation": use profile.personal_details.sexual_orientation if available. Do NOT infer. Leave null if not in profile, with requires_user_confirmation=true.
   * "personal_summary" / "Personal Summary" / "Professional Profile": use profile.professional_summary if available. Set requires_user_confirmation=true since these are often role-specific.
 - If you cannot confidently map a field, set value to null and explain why in reason.
+- For honeypot / anti-spam fields (field_context="honeypot" or Stage B format_hint says "leave empty"), set value to the JSON literal null — do NOT set it to the string "None" or "null". The Stage B annotation already explained why this field should be empty; your job is to return null.
 - Select the best CV variant for this job. If confidence is low (<0.7), flag it.
 - answer_source must be one of: profile, learned_answers, generated, unknown.
 - Return the field_idx unchanged for every field — it is the stable identifier used to locate the field during filling. The field_id may change between page loads for some fields.
