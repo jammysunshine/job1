@@ -83,8 +83,21 @@ def _get_bot() -> Optional[Bot]:
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not token:
         return None
+    _apply_httpx_token_filter(token)
     _bot_instance = Bot(token=token, request=HTTPXRequest(connect_timeout=10, read_timeout=10))
     return _bot_instance
+
+
+def _apply_httpx_token_filter(token: str) -> None:
+    httpx_logger = logging.getLogger("httpx")
+    token_prefix = f"bot{token}"
+
+    def redact_token(record: logging.LogRecord) -> bool:
+        record.msg = record.getMessage().replace(token, "***")
+        record.args = ()
+        return True
+
+    httpx_logger.addFilter(redact_token)
 
 
 async def handle_message(update: Update, _context) -> None:

@@ -36,8 +36,12 @@ async def _click_apply(page) -> bool:
     patterns = (
         r"apply\s*now",
         r"apply\s*here",
+        r"apply\s*for\s*this\s*role",
+        r"apply\s*for\s*this\s*job",
+        r"apply\s*to\s*this",
         r"start\s*application",
         r"quick\s*apply",
+        r"apply\s*$",
     )
     for pattern in patterns:
         try:
@@ -74,9 +78,11 @@ async def capture_page_evidence(url: str, *, headed: bool = True) -> PageEvidenc
         scripts_text = await _scripts_text_sample(page)
         fields = await _extract_fields(page)
 
-        if not fields or len(fields) < 3:
+        visible_count = sum(1 for f in fields if f.visible)
+        if not fields or visible_count < 3:
             clicked = await _click_apply(page)
             if clicked:
+                await page.wait_for_timeout(3000)
                 fields = await _extract_fields(page)
                 final_url = page.url
 

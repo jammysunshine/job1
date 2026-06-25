@@ -38,6 +38,11 @@ LOCATION_TEXTS = (
     "deny",
 )
 
+SESSION_TEXTS = (
+    "continue working",
+    "discard",
+)
+
 CLOSE_SELECTORS = (
     "button[aria-label*='close' i]",
     "button[title*='close' i]",
@@ -59,6 +64,7 @@ async def dismiss_common_popups(page) -> None:
     await _click_text_buttons(page, COOKIE_REJECT_TEXTS)
     await _click_text_buttons(page, COOKIE_ALLOW_TEXTS)
     await _click_text_buttons(page, LOCATION_TEXTS)
+    await _click_text_buttons(page, SESSION_TEXTS)
     await _click_close_buttons(page)
     await _remove_dead_overlays(page)
 

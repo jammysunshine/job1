@@ -123,6 +123,10 @@ class GenericHandler(VendorHandler):
 
             for page_num in range(MAX_PAGES):
                 await dismiss_common_popups(page)
+                if page_num > 0:
+                    await self._click_apply(page)
+                    await dismiss_common_popups(page)
+                    await self._handle_auth_gate(page)
 
                 # Stage A: Extractor — deterministic DOM inventory
                 live_fields = await self._extract_fields(page)
@@ -725,8 +729,12 @@ class GenericHandler(VendorHandler):
         patterns = (
             r"apply\s*now",
             r"apply\s*here",
+            r"apply\s*for\s*this\s*role",
+            r"apply\s*for\s*this\s*job",
+            r"apply\s*to\s*this",
             r"start\s*application",
             r"quick\s*apply",
+            r"apply\s*$",
         )
         for pattern in patterns:
             try:
