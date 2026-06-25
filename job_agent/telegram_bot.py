@@ -5,8 +5,6 @@ import json
 import logging
 import os
 import re
-import urllib.parse
-import urllib.request
 from pathlib import Path
 from typing import Optional
 
@@ -14,6 +12,15 @@ from telegram import Bot, Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from telegram.request import HTTPXRequest
 
+from .handlers._shared import (
+    discover_chat_id as _discover_chat_id,
+    load_chat_id,
+    save_chat_id,
+    send_telegram as send_message,
+)
+
+# backward-compat alias: everything should use _shared.send_telegram directly
+send_telegram = send_message
 from .models import JobRecord, utc_now_iso
 from .storage import ROOT, append_history, ensure_data_dirs
 
@@ -25,20 +32,18 @@ logger = logging.getLogger(__name__)
 
 URL_RE = re.compile(r"https?://[^\s]+", re.IGNORECASE)
 
+CHAT_ID_PATH = ROOT / "data" / "telegram_chat_id.txt"
+LEARN_SIGNAL_PATH = ROOT / "data" / "learn_signal.json"
+LEARN_DONE_PATH = ROOT / "data" / "learn_done.json"
+
+_fill_in_progress = False
+_fill_lock = asyncio.Lock()
+
 
 def load_env() -> None:
-    env_path = ROOT / ".env"
-    if not env_path.exists():
-        return
-    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        key = key.strip()
-        value = value.strip().strip('"').strip("'")
-        if key and key not in os.environ:
-            os.environ[key] = value
+    """Load .env into environment (called once at startup)."""
+    from .handlers._shared import _ensure_env
+    _ensure_env()
 
 
 async def start(update: Update, _context) -> None:
@@ -60,55 +65,11 @@ async def help_text(update: Update, _context) -> None:
 
 
 async def status(update: Update, _context) -> None:
-    await update.message.reply_text("Bot is running.")
-
-
-CHAT_ID_PATH = ROOT / "data" / "telegram_chat_id.txt"
-LEARN_SIGNAL_PATH = ROOT / "data" / "learn_signal.json"
-LEARN_DONE_PATH = ROOT / "data" / "learn_done.json"
-
-
-def save_chat_id(chat_id: int) -> None:
-    ensure_data_dirs()
-    CHAT_ID_PATH.write_text(str(chat_id))
-
-
-def load_chat_id() -> Optional[int]:
-    if CHAT_ID_PATH.exists():
-        try:
-            return int(CHAT_ID_PATH.read_text().strip())
-        except (ValueError, OSError):
-            return None
-    return None
-
-
-def discover_chat_id() -> Optional[int]:
-    load_env()
-    token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    if not token:
-        return None
-    try:
-        import ssl
-        ctx = ssl._create_unverified_context()
-        url = f"https://api.telegram.org/bot{token}/getUpdates?timeout=2"
-        req = urllib.request.Request(url, headers={"User-Agent": "python"})
-        resp = urllib.request.urlopen(req, timeout=15, context=ctx)
-        data = json.loads(resp.read())
-        chats = {}
-        for update in data.get("result", []):
-            msg = update.get("message", {}) or update.get("edited_message", {})
-            cid = msg.get("chat", {}).get("id")
-            date = msg.get("date", 0)
-            if cid:
-                chats[cid] = max(chats.get(cid, 0), date)
-        if chats:
-            latest = max(chats, key=chats.get)
-            save_chat_id(latest)
-            logger.info("Discovered chat_id %s from Telegram updates", latest)
-            return latest
-    except Exception as exc:
-        logger.warning("Failed to discover chat_id: %s", exc)
-    return None
+    global _fill_in_progress
+    msg = "Bot is running."
+    if _fill_in_progress:
+        msg += "\nA fill is currently in progress."
+    await update.message.reply_text(msg)
 
 
 _bot_instance: Optional[Bot] = None
@@ -126,33 +87,9 @@ def _get_bot() -> Optional[Bot]:
     return _bot_instance
 
 
-async def send_message(text: str) -> bool:
-    load_env()
-    token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    chat_id = load_chat_id()
-    if not token or not chat_id:
-        return False
-    try:
-        import ssl
-        ctx = ssl._create_unverified_context()
-        data = urllib.parse.urlencode({"chat_id": chat_id, "text": text}).encode()
-        url = f"https://api.telegram.org/bot{token}/sendMessage"
-        req = urllib.request.Request(url, data=data, headers={"User-Agent": "python"})
-        urllib.request.urlopen(req, timeout=15, context=ctx)
-        return True
-    except Exception as exc:
-        logger.error("Failed to send Telegram message: %s", exc)
-        return False
-
-
-SIGNAL_HANDLERS: dict = {}
-
-
-def set_signal_handler(name: str, handler) -> None:
-    SIGNAL_HANDLERS[name] = handler
-
-
 async def handle_message(update: Update, _context) -> None:
+    global _fill_in_progress
+
     text = (update.message.text or "").strip()
     save_chat_id(update.effective_chat.id)
 
@@ -172,21 +109,82 @@ async def handle_message(update: Update, _context) -> None:
 
     match = URL_RE.search(text)
     if not match:
-        await update.message.reply_text(
-            "I didn't find a URL in that message. Send me a job posting link."
-        )
         return
 
     job_url = match.group(0)
     ensure_data_dirs()
     record = JobRecord(job_url=job_url, user_note=text)
     append_history(record.to_dict())
-
     logger.info("Received job URL: %s", job_url)
+
+    if _fill_in_progress:
+        await update.message.reply_text(
+            f"A fill is already in progress. I've noted:\n{job_url}\n\n"
+            "Try again when the current one finishes."
+        )
+        return
+
     await update.message.reply_text(
-        f"Got it. I've queued:\n{job_url}\n\n"
-        "I'll let you know once I've processed it."
+        f"Got it. Starting the pipeline for:\n{job_url}\n\n"
+        "I'll send updates as each stage completes."
     )
+
+    async with _fill_lock:
+        _fill_in_progress = True
+    try:
+        asyncio.create_task(_run_fill_background(job_url, update.effective_chat.id))
+    except Exception as e:
+        _fill_in_progress = False
+        logger.error("Failed to start fill task: %s", e)
+        await update.message.reply_text(f"Error starting fill: {e}")
+
+
+async def _run_fill_background(job_url: str, chat_id: int) -> None:
+    global _fill_in_progress
+    try:
+        await send_telegram(f"🔍 Capturing page evidence for:\n{job_url}")
+        from .intake import capture_page_evidence
+        from .llm import classify_intake
+        evidence = await capture_page_evidence(job_url, headed=False)
+        llm_result = classify_intake(evidence)
+        ats_type = llm_result.get("ats_type", "unknown")
+        await send_telegram(f"📋 ATS detected (informational): {ats_type}")
+
+        from .handlers.generic_handler import GenericHandler
+        handler = GenericHandler(headless=False)
+
+        await send_telegram(
+            f"⚙️ Running pipeline (Extract → Interpret → Map → Fill).\n"
+            f"Browser will open on your Mac. You may need to solve a CAPTCHA or enter a PIN."
+        )
+
+        from .decision_engine import load_cv_variants
+        variants = load_cv_variants()
+        cv_path = variants[0].get("file_path") if variants else None
+        mapping = {"fields": [], "cv_variant": variants[0].get("name") if variants else None}
+
+        result = await handler.fill_and_stop(job_url, mapping, cv_path=cv_path)
+
+        if result.errors:
+            await send_telegram(
+                f"⚠️ Fill completed with {len(result.errors)} issue(s):\n"
+                + "\n".join(result.errors[:3])
+                + "\n\nBrowser is open for your review. I will NOT submit."
+            )
+        else:
+            await send_telegram(
+                f"✅ All fields filled ({len(result.filled_fields)} fields).\n"
+                f"Browser is open for your review. I will NOT submit."
+            )
+
+        record = JobRecord(job_url=job_url, status=result.status)
+        append_history(record.to_dict())
+
+    except Exception as e:
+        logger.error("Fill pipeline failed: %s", e, exc_info=True)
+        await send_telegram(f"❌ Pipeline failed: {e}")
+    finally:
+        _fill_in_progress = False
 
 
 async def error_handler(update: object, context) -> None:
@@ -208,7 +206,14 @@ def run_bot() -> int:
     app.add_error_handler(error_handler)
 
     print("Starting Telegram bot (polling)...")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+
+    async def _poll():
+        async with app:
+            await app.start()
+            await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+            await asyncio.Event().wait()
+
+    asyncio.run(_poll())
     return 0
 
 

@@ -13,6 +13,9 @@ COOKIE_ALLOW_TEXTS = (
     "i accept",
     "i agree",
     "agree",
+    "agree to all",
+    "agree to necessary",
+    "agree to required",
     "got it",
     "ok",
 )

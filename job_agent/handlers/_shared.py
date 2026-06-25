@@ -98,11 +98,12 @@ async def send_telegram(text: str) -> bool:
     chat_id = load_chat_id()
     if not token or not chat_id:
         return False
+    loop = asyncio.get_event_loop()
     try:
         data = urllib.parse.urlencode({"chat_id": chat_id, "text": text}).encode()
         url = f"https://api.telegram.org/bot{token}/sendMessage"
         req = urllib.request.Request(url, data=data, headers={"User-Agent": "python"})
-        urllib.request.urlopen(req, timeout=10, context=_SSL_CTX)
+        await loop.run_in_executor(None, lambda: urllib.request.urlopen(req, timeout=10, context=_SSL_CTX))
         return True
     except Exception as exc:
         logger.error("Failed to send Telegram message: %s", exc)

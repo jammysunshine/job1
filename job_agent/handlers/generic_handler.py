@@ -336,16 +336,27 @@ class GenericHandler(VendorHandler):
             if not visible and input_type != "file":
                 continue
 
+            input_type_attr = input_type
             meta = await el.evaluate(
-                """
-                el => {
+                f"""
+                el => {{
                   const labelFor = el.id
-                    ? document.querySelector(`label[for="${CSS.escape(el.id)}"]`)?.innerText?.trim()
+                    ? document.querySelector(`label[for="${{CSS.escape(el.id)}}"]`)?.innerText?.trim()
                     : null;
                   const wrappingLabel = el.closest('label')?.innerText?.trim() || null;
-                  const parent = el.closest('fieldset, .form-group, .field, [class*=form], [class*=field], div, li, td') || el.parentElement;
+                  let parent = el.closest('fieldset, .form-group, .field, [class*=form], [class*=field], div, li, td') || el.parentElement;
+                  const isChoice = {('true' if input_type_attr in ('radio', 'checkbox') else 'false')};
+                  if (isChoice) {{
+                    for (let p = parent; p && p !== document.body; p = p.parentElement) {{
+                      const text = (p.innerText || '').trim();
+                      if (text.length > 60 || p.querySelectorAll('input[type=radio],input[type=checkbox]').length >= 2) {{
+                        parent = p;
+                        break;
+                      }}
+                    }}
+                  }}
                   const section = el.closest('section, fieldset, form');
-                  return {
+                  return {{
                     id: el.id || '',
                     name: el.getAttribute('name') || '',
                     placeholder: el.getAttribute('placeholder'),
@@ -355,8 +366,8 @@ class GenericHandler(VendorHandler):
                     nearbyText: (parent?.innerText || '').trim().slice(0, 600),
                     sectionText: (section?.querySelector('legend,h1,h2,h3,h4')?.innerText || '').trim(),
                     value: el.value || ''
-                  };
-                }
+                  }};
+                }}
                 """
             )
             field_id = meta.get("id") or meta.get("name") or f"field_{idx}"
@@ -399,10 +410,24 @@ class GenericHandler(VendorHandler):
                 """
                 el => {
                   const group = el.closest('fieldset, [role=radiogroup], [class*=radio], [class*=checkbox], div') || el.parentElement;
-                  return Array.from(group.querySelectorAll('label'))
+                  let labels = Array.from(group.querySelectorAll('label'))
                     .map(label => label.innerText.trim())
-                    .filter(Boolean)
-                    .slice(0, 20);
+                    .filter(Boolean);
+                  if (labels.length === 0) {
+                    const inputs = group.querySelectorAll('input[type=radio], input[type=checkbox]');
+                    labels = Array.from(inputs)
+                      .map(inp => {
+                        const lbl = inp.closest('label');
+                        if (lbl) return lbl.innerText.trim();
+                        const forLabel = inp.id && document.querySelector('label[for=\"' + CSS.escape(inp.id) + '\"]');
+                        if (forLabel) return forLabel.innerText.trim();
+                        const parent = inp.parentElement;
+                        const text = (parent?.innerText || '').trim().replace(inp.value || '', '').trim();
+                        return text || inp.value || inp.nextSibling?.textContent?.trim() || '';
+                      })
+                      .filter(Boolean);
+                  }
+                  return [...new Set(labels)].slice(0, 20);
                 }
                 """
             )
@@ -430,9 +455,20 @@ class GenericHandler(VendorHandler):
             return await self._select_option(el, field, value_text)
 
         if input_type == "file":
-            file_path = self._resolve_path(value_text) or cv_path
+            file_path = self._resolve_path(value_text)
             if file_path and Path(file_path).exists():
                 await el.set_input_files(file_path)
+                await self._dispatch_input_events(el)
+                return True
+            if len(value_text) > 50:
+                tmp = ROOT / "data" / f"tmp_{field.field_idx}_{field.field_id.replace('/', '_')[:40]}.txt"
+                tmp.parent.mkdir(parents=True, exist_ok=True)
+                tmp.write_text(value_text, encoding="utf-8")
+                await el.set_input_files(str(tmp))
+                await self._dispatch_input_events(el)
+                return True
+            if cv_path and Path(cv_path).exists():
+                await el.set_input_files(cv_path)
                 await self._dispatch_input_events(el)
                 return True
             return False
@@ -489,23 +525,43 @@ class GenericHandler(VendorHandler):
         return False
 
     async def _choose_radio(self, page, field: FieldEvidence, value: str) -> bool:
-        patterns = [
-            f"label:has-text('{value}')",
-            f"text={value}",
-        ]
-        for pattern in patterns:
-            try:
-                option = page.locator(pattern).first
-                if await option.count() and await option.is_visible():
-                    await option.click()
-                    return True
-            except Exception:
-                pass
         el = await self._locator_for_field(page, field)
-        if el and await el.count():
-            await el.click()
-            return True
-        return False
+        if el is None or not await el.count():
+            return False
+
+        try:
+            clicked = await el.evaluate(
+                f"""
+                el => {{
+                    const targetValue = {json.dumps(value)};
+                    const parent = el.closest('fieldset, [role=radiogroup], [class*=radio], .form-group, div')
+                        || el.parentElement;
+                    const labels = parent.querySelectorAll('label');
+                    for (const label of labels) {{
+                        if (label.innerText.trim().toLowerCase() === targetValue.toLowerCase()) {{
+                            const input = label.querySelector('input[type=radio]');
+                            if (input) {{ input.click(); return true; }}
+                            label.click(); return true;
+                        }}
+                    }}
+                    const inputs = parent.querySelectorAll('input[type=radio]');
+                    for (const input of inputs) {{
+                        const lbl = parent.querySelector('label[for=\"' + input.id + '\"]');
+                        if ((lbl && lbl.innerText.trim().toLowerCase() === targetValue.toLowerCase())) {{
+                            input.click(); return true;
+                        }}
+                    }}
+                    return false;
+                }}
+                """
+            )
+            if clicked:
+                return True
+        except Exception:
+            pass
+
+        await el.click()
+        return True
 
     async def _verify_field_value(self, page, field: FieldEvidence, expected: Any) -> bool:
         el = await self._locator_for_field(page, field)

@@ -35,6 +35,11 @@ actually expects:
 4. Note if the field is sensitive (salary, visa, relocation, notice
    period, work authorization, legal, gender, ethnicity) so Stage C can
    handle it carefully.
+5. Radio / checkbox inputs: each individual input is a separate field in
+   the inventory. Group them by giving the same field_context to all
+   options within one group. List the paired option labels in format_hint
+   (e.g. "paired options: Yes, No"). Set expected_value_shape to
+   "boolean" for yes/no pairs.
 
 Output the same field list annotated. Keep field_idx unchanged — it is
 the stable identifier. Return only valid JSON.

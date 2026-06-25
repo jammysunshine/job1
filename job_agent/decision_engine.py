@@ -31,6 +31,8 @@ Inputs available:
 Rules:
 - For fields where the answer is clearly in the profile, set requires_user_confirmation=false.
 - For sensitive fields (salary, visa, relocation, notice, work authorization, legal), set requires_user_confirmation=true unless the answer exactly matches this context.
+- Radio / boolean fields come in pairs: one input for each option (e.g. idx=9 is the "Yes" radio, idx=10 is the "No" radio for the same question, both with the same field_context). For each pair, set the VALUE of the chosen radio's field entry to its label text (e.g. "Yes" or "No") and set the unchosen radio's value to null. Do NOT set both to the same value.
+- For legal/conflict-of-interest / ethics / compliance yes/no questions (e.g. financial interest, officer/director role, esports ownership, family relationship, vendor connection, gifts, language fluency), default to answering "No" (set the "No" radio's value to "No", leave the "Yes" radio's value as null). Only answer "Yes" if the profile or learned_answers clearly indicate otherwise. Set requires_user_confirmation=true and add the question to missing_fields_questions so the user can override.
 - If you cannot confidently map a field, set value to null and explain why in reason.
 - Select the best CV variant for this job. If confidence is low (<0.7), flag it.
 - answer_source must be one of: profile, learned_answers, generated, unknown.
