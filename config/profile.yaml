@@ -1,9 +1,13 @@
 personal:
   full_name: "Mohit Mendiratta"
+  first_name: "Mohit"
+  last_name: "Mendiratta"
   email: "mohit.mendiratta@gmail.com"
-  phone: "+971.544.972.975"
-  alternate_phone: "+91.9971.355.955"
-  location: "Dubai, UAE"
+  phone: "+971544972975"
+  phone_country_code: "+971"
+  phone_local_number: "544972975"
+  alternate_phone: "+919971355955"
+  location: "Dubai, United Arab Emirates"
   nationality: "British"
   visa_status: "UAE Golden Visa"
   citizen_of: "UK"
@@ -276,6 +280,7 @@ languages:
 personal_details:
   marital_status: "Married"
   children: "Two daughters"
+  gender: "Male"
   interests: "Enjoy keeping fit"
 
 achievements:
