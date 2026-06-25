@@ -39,6 +39,7 @@ class FieldEvidence:
     options: List[str] = field(default_factory=list)
     nearby_text: Optional[str] = None
     page_idx: Optional[int] = None
+    iframe_id: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

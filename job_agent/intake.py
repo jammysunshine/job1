@@ -32,6 +32,27 @@ def cheap_ats_signals(url: str, title: str = "", scripts_text: str = "") -> Dict
     }
 
 
+async def _click_apply(page) -> bool:
+    patterns = (
+        r"apply\s*now",
+        r"apply\s*here",
+        r"start\s*application",
+        r"quick\s*apply",
+    )
+    for pattern in patterns:
+        try:
+            apply = page.locator("a, button, [role='button']").filter(
+                has_text=re.compile(pattern, re.IGNORECASE)
+            ).first
+            if await apply.count() and await apply.is_visible():
+                await apply.click()
+                await page.wait_for_timeout(3000)
+                return True
+        except Exception:
+            continue
+    return False
+
+
 async def capture_page_evidence(url: str, *, headed: bool = True) -> PageEvidence:
     try:
         from playwright.async_api import async_playwright
@@ -52,6 +73,13 @@ async def capture_page_evidence(url: str, *, headed: bool = True) -> PageEvidenc
         visible_text = await _visible_text_sample(page)
         scripts_text = await _scripts_text_sample(page)
         fields = await _extract_fields(page)
+
+        if not fields or len(fields) < 3:
+            clicked = await _click_apply(page)
+            if clicked:
+                fields = await _extract_fields(page)
+                final_url = page.url
+
         buttons = await _extract_buttons(page)
 
         slug = _safe_slug(final_url)
@@ -107,6 +135,8 @@ async def _extract_buttons(page: Any) -> List[str]:
 
 
 async def _extract_fields(page: Any) -> List[FieldEvidence]:
+    all_fields: List[FieldEvidence] = []
+
     raw_fields = await page.locator("input, textarea, select").evaluate_all(
         """
         els => els.map((el, index) => {
@@ -132,8 +162,8 @@ async def _extract_fields(page: Any) -> List[FieldEvidence]:
         }).slice(0, 120)
         """
     )
-    return [
-        FieldEvidence(
+    for idx, item in enumerate(raw_fields):
+        all_fields.append(FieldEvidence(
             field_idx=idx,
             field_id=str(item.get("field_id") or f"field_{idx}"),
             tag_name=str(item.get("tag_name") or ""),
@@ -145,9 +175,72 @@ async def _extract_fields(page: Any) -> List[FieldEvidence]:
             visible=bool(item.get("visible")),
             options=list(item.get("options") or []),
             nearby_text=item.get("nearby_text"),
-        )
-        for idx, item in enumerate(raw_fields)
-    ]
+        ))
+
+    try:
+        await page.wait_for_selector("iframe[src]", state="attached", timeout=3000)
+    except Exception:
+        pass
+
+    iframe_count = await page.locator("iframe[src]").count()
+    for i in range(iframe_count):
+        iframe_el = page.locator("iframe[src]").nth(i)
+        src = (await iframe_el.get_attribute("src")) or ""
+        try:
+            handle = await iframe_el.element_handle()
+            if not handle:
+                continue
+            frame = await handle.content_frame()
+            if not frame:
+                continue
+            try:
+                await frame.wait_for_selector("input, select, textarea", state="attached", timeout=5000)
+            except Exception:
+                continue
+            raw = await frame.locator("input, textarea, select").evaluate_all(
+                """
+                els => els.map((el, index) => {
+                  const id = el.id || el.name || `field_${index}`;
+                  const labelEl = el.id ? document.querySelector(`label[for="${CSS.escape(el.id)}"]`) : null;
+                  const parentText = (el.closest('label, div, section, fieldset')?.innerText || '').trim();
+                  const options = el.tagName.toLowerCase() === 'select'
+                    ? Array.from(el.options).map(o => o.innerText.trim()).filter(Boolean)
+                    : [];
+                  const rect = el.getBoundingClientRect();
+                  return {
+                    field_id: id,
+                    tag_name: el.tagName.toLowerCase(),
+                    input_type: el.getAttribute('type'),
+                    label: labelEl ? labelEl.innerText.trim() : null,
+                    placeholder: el.getAttribute('placeholder'),
+                    aria_label: el.getAttribute('aria-label'),
+                    required: Boolean(el.required || el.getAttribute('aria-required') === 'true'),
+                    visible: rect.width > 0 && rect.height > 0,
+                    options,
+                    nearby_text: parentText.slice(0, 500)
+                  };
+                }).slice(0, 120)
+                """
+            )
+            for item in raw:
+                all_fields.append(FieldEvidence(
+                    field_idx=len(all_fields),
+                    field_id=str(item.get("field_id") or f"iframe_field_{len(all_fields)}"),
+                    tag_name=str(item.get("tag_name") or ""),
+                    input_type=item.get("input_type"),
+                    label=item.get("label"),
+                    placeholder=item.get("placeholder"),
+                    aria_label=item.get("aria_label"),
+                    required=bool(item.get("required")),
+                    visible=bool(item.get("visible")),
+                    options=list(item.get("options") or []),
+                    nearby_text=item.get("nearby_text"),
+                    iframe_id=src[:120],
+                ))
+        except Exception:
+            continue
+
+    return all_fields[:120]
 
 
 def _safe_slug(value: str) -> str:

@@ -314,9 +314,10 @@ class GenericHandler(VendorHandler):
         return filled, errors
 
     async def _extract_fields(self, page) -> List[FieldEvidence]:
+        raw: List[FieldEvidence] = []
+
         locator = page.locator("input, select, textarea")
         count = await locator.count()
-        raw: List[FieldEvidence] = []
         seen_keys = set()
 
         for idx in range(count):
@@ -402,6 +403,99 @@ class GenericHandler(VendorHandler):
                 nearby_text=" ".join(part for part in nearby_parts if part).strip()[:800],
             ))
 
+        iframe_fields = await self._extract_fields_from_iframes(page)
+        raw.extend(iframe_fields)
+
+        return raw
+
+    async def _extract_fields_from_iframes(self, page) -> List[FieldEvidence]:
+        raw: List[FieldEvidence] = []
+        try:
+            await page.wait_for_selector("iframe[src]", state="attached", timeout=3000)
+        except Exception:
+            pass
+        iframe_count = await page.locator("iframe[src]").count()
+        for i in range(iframe_count):
+            iframe_el = page.locator("iframe[src]").nth(i)
+            src = (await iframe_el.get_attribute("src")) or ""
+            try:
+                handle = await iframe_el.element_handle()
+                if not handle:
+                    continue
+                    frame = await handle.content_frame()
+                    if not frame:
+                        continue
+                    try:
+                        await frame.wait_for_selector("input, select, textarea", state="attached", timeout=5000)
+                    except Exception:
+                        continue
+            except Exception:
+                continue
+            locator = frame.locator("input, select, textarea")
+            count = await locator.count()
+            for idx in range(count):
+                el = locator.nth(idx)
+                try:
+                    tag_name = await el.evaluate("el => el.tagName.toLowerCase()")
+                    input_type = await el.evaluate("el => el.getAttribute('type')")
+                except Exception:
+                    continue
+                if input_type == "hidden":
+                    continue
+                try:
+                    visible = await el.is_visible()
+                except Exception:
+                    visible = False
+                if not visible and input_type != "file":
+                    continue
+                meta = await el.evaluate(
+                    """
+                    el => {
+                      const labelFor = el.id
+                        ? document.querySelector(`label[for="${CSS.escape(el.id)}"]`)?.innerText?.trim()
+                        : null;
+                      const wrappingLabel = el.closest('label')?.innerText?.trim() || null;
+                      let parent = el.closest('fieldset, .form-group, .field, div, li, td') || el.parentElement;
+                      const section = el.closest('section, fieldset, form');
+                      return {
+                        id: el.id || '',
+                        name: el.getAttribute('name') || '',
+                        placeholder: el.getAttribute('placeholder'),
+                        ariaLabel: el.getAttribute('aria-label'),
+                        required: Boolean(el.required || el.getAttribute('aria-required') === 'true'),
+                        label: labelFor || wrappingLabel || null,
+                        nearbyText: (parent?.innerText || '').trim().slice(0, 600),
+                        sectionText: (section?.querySelector('legend,h1,h2,h3,h4')?.innerText || '').trim(),
+                      };
+                    }
+                    """
+                )
+                field_id = meta.get("id") or meta.get("name") or f"iframe_field_{len(raw)}"
+                options: List[str] = []
+                if tag_name == "select":
+                    options = await el.evaluate(
+                        "el => Array.from(el.options).map(o => o.innerText.trim()).filter(Boolean)"
+                    )
+                elif input_type in ("radio", "checkbox"):
+                    options = await self._nearby_choice_options(el)
+                nearby_parts = [
+                    meta.get("sectionText") or "",
+                    meta.get("nearbyText") or "",
+                ]
+                raw.append(FieldEvidence(
+                    field_idx=len(raw),
+                    field_id=field_id,
+                    tag_name=tag_name,
+                    input_type=input_type or "text",
+                    label=meta.get("label") or "",
+                    placeholder=meta.get("placeholder"),
+                    aria_label=meta.get("ariaLabel"),
+                    required=bool(meta.get("required")),
+                    visible=visible,
+                    options=options,
+                    nearby_text=" ".join(part for part in nearby_parts if part).strip()[:800],
+                    iframe_id=src[:120],
+                ))
         return raw
 
     async def _nearby_choice_options(self, el) -> List[str]:
@@ -491,20 +585,42 @@ class GenericHandler(VendorHandler):
         return True
 
     async def _locator_for_field(self, page, field: FieldEvidence):
+        target = page
+        if field.iframe_id:
+            frame = await self._find_iframe_by_src(page, field.iframe_id)
+            if frame:
+                target = frame
+
         if field.field_id:
             for selector in (
                 f"[id={json.dumps(field.field_id)}]",
                 f"[name={json.dumps(field.field_id)}]",
             ):
-                loc = page.locator(selector).first
+                loc = target.locator(selector).first
                 try:
                     if await loc.count():
                         return loc
                 except Exception:
                     pass
-        loc = page.locator("input, select, textarea").nth(field.field_idx)
+        loc = target.locator("input, select, textarea").nth(field.field_idx)
         if await loc.count():
             return loc
+        return None
+
+    async def _find_iframe_by_src(self, page, src_substring: str) -> Any:
+        iframes = page.locator("iframe")
+        count = await iframes.count()
+        for i in range(count):
+            try:
+                actual_src = await iframes.nth(i).get_attribute("src")
+                if actual_src and src_substring in actual_src:
+                    handle = await iframes.nth(i).element_handle()
+                    if handle:
+                        frame = await handle.content_frame()
+                        if frame:
+                            return frame
+            except Exception:
+                continue
         return None
 
     async def _select_option(self, el, field: FieldEvidence, value: str) -> bool:
