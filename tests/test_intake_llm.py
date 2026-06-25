@@ -24,6 +24,7 @@ class IntakeLlmTests(unittest.TestCase):
             ats_signals={"candidate_matches": {}},
             fields=[
                 FieldEvidence(
+                    field_idx=0,
                     field_id="candidate_name",
                     tag_name="input",
                     input_type="text",
@@ -63,6 +64,80 @@ class IntakeLlmTests(unittest.TestCase):
                     os.environ["GEMINI_API_KEY"] = old_key
                 if old_model is not None:
                     os.environ["GEMINI_MODEL"] = old_model
+
+
+class FieldInterpreterTests(unittest.TestCase):
+    def test_build_interpretation_prompt_shape(self):
+        from job_agent.field_interpreter import build_interpretation_prompt
+
+        fields = [
+            FieldEvidence(
+                field_idx=0, field_id="nat", tag_name="select", input_type="text",
+                label="Nationality", placeholder=None, aria_label=None,
+                required=True, visible=True,
+                options=["British", "Indian", "American"],
+                nearby_text="Select your nationality",
+            ),
+            FieldEvidence(
+                field_idx=1, field_id="dob", tag_name="input", input_type="text",
+                label="Date of Birth", placeholder="MM/DD/YYYY", aria_label=None,
+                required=True, visible=True,
+                nearby_text="Date of birth",
+            ),
+        ]
+
+        prompt = build_interpretation_prompt(fields, page_text="Job application form")
+
+        self.assertEqual(prompt["task"], "interpret_form_fields")
+        self.assertEqual(len(prompt["form_fields"]), 2)
+        self.assertEqual(prompt["form_fields"][0]["field_id"], "nat")
+        self.assertEqual(prompt["page_text_sample"], "Job application form")
+        self.assertIn("required_output_schema", prompt)
+
+
+class PipelineStageTests(unittest.TestCase):
+    def test_handler_registry_no_longer_routes_by_vendor(self):
+        from job_agent.handlers import GenericHandler, VendorHandler
+
+        self.assertTrue(issubclass(GenericHandler, VendorHandler))
+
+    def test_handler_init_no_longer_references_vendor_registry(self):
+        from job_agent.handlers import __all__ as handler_exports
+
+        self.assertNotIn("HANDLER_REGISTRY", dir())
+        self.assertNotIn("get_handler", dir())
+        self.assertIn("GenericHandler", handler_exports)
+        self.assertIn("VendorHandler", handler_exports)
+
+    def test_decision_engine_stage_c_prompt_refers_to_stage_b(self):
+        from job_agent.decision_engine import SYSTEM_PROMPT
+
+        self.assertIn("Stage C", SYSTEM_PROMPT)
+        self.assertIn("Stage B", SYSTEM_PROMPT)
+        self.assertIn("Field Interpreter", SYSTEM_PROMPT)
+
+    def test_field_interpreter_stage_b_prompt_refers_to_its_role(self):
+        from job_agent.field_interpreter import SYSTEM_PROMPT
+
+        self.assertIn("Stage B", SYSTEM_PROMPT)
+        self.assertIn("Field Interpreter", SYSTEM_PROMPT)
+        self.assertIn("form_fields", SYSTEM_PROMPT.lower())
+
+    def test_cli_no_longer_accepts_ats_flag(self):
+        import argparse
+        from job_agent.cli import main
+
+        parser = argparse.ArgumentParser(prog="job-agent")
+        subparsers = parser.add_subparsers(dest="command")
+        fill_parser = subparsers.add_parser("fill")
+        fill_parser.add_argument("job_url")
+        fill_parser.add_argument("--dry-run", action="store_true")
+        fill_parser.add_argument("--headless", action="store_true")
+
+        for action in fill_parser._actions:
+            if hasattr(action, "option_strings"):
+                for opt in action.option_strings:
+                    self.assertNotEqual(opt, "--ats")
 
 
 if __name__ == "__main__":

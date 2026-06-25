@@ -51,9 +51,9 @@ async def start(update: Update, _context) -> None:
 async def help_text(update: Update, _context) -> None:
     await update.message.reply_text(
         "Send any job URL (LinkedIn, company career page, etc.) and I'll:\n"
-        "1. Capture the page with Playwright\n"
-        "2. Detect the ATS vendor\n"
-        "3. Ask you for anything I can't infer\n"
+        "1. Extract form fields from the page\n"
+        "2. Interpret what each field means\n"
+        "3. Map your profile data to each field\n"
         "4. Fill the form for your review\n\n"
         "I will never click submit — that's your job."
     )

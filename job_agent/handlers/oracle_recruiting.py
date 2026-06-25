@@ -1,3 +1,12 @@
+"""
+DEPRECATED — v3 spec replaces per-vendor handlers with the generic
+four-stage pipeline (GenericHandler). This file is retained for
+reference only and is no longer imported or routed anywhere.
+
+Use job_agent.handlers.generic_handler.GenericHandler instead.
+"""
+
+
 from __future__ import annotations
 
 import asyncio
