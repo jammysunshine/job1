@@ -3,181 +3,189 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-from pathlib import Path
-from typing import Any, Dict, Optional
+import sys
+from typing import Optional
 
-from .decision_engine import map_fields
-from .handlers.generic_handler import GenericHandler
-from .intake import _safe_slug, capture_page_evidence
-from .llm import classify_intake
-from .models import JobRecord, utc_now_iso
-from .storage import EVIDENCE_DIR, ROOT, append_history, ensure_data_dirs, write_json
-from .telegram_bot import run_bot
+from .config import (
+    append_history,
+    ensure_dirs,
+    load_cv_variants,
+    safe_slug,
+    write_json,
+)
+from .models import JobRecord
 
 
 def main(argv: Optional[list[str]] = None) -> int:
-    from .telegram_bot import load_env as _load_env
-    _load_env()
-
     parser = argparse.ArgumentParser(prog="job-agent")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    intake_parser = subparsers.add_parser("intake", help="Capture evidence and run LLM intake classification")
+    # --- intake command ---
+    intake_parser = subparsers.add_parser(
+        "intake", help="Capture page state (a11y tree + screenshot) without filling"
+    )
     intake_parser.add_argument("job_url")
-    intake_parser.add_argument("--headless", action="store_true", help="Run browser headless")
+    intake_parser.add_argument("--headless", action="store_true")
 
-    fill_parser = subparsers.add_parser("fill", help="Run the four-stage pipeline (Extract -> Interpret -> Map -> Fill)")
+    # --- fill command ---
+    fill_parser = subparsers.add_parser(
+        "fill", help="Run the agentic loop to fill the form"
+    )
     fill_parser.add_argument("job_url")
-    fill_parser.add_argument("--headless", action="store_true", help="Run browser headless")
-    fill_parser.add_argument("--dry-run", action="store_true", help="Run Stages A+B+C only — no filling")
+    fill_parser.add_argument("--headless", action="store_true")
+    fill_parser.add_argument("--dry-run", action="store_true", help="Show LLM plan without executing")
 
+    # --- bot command ---
     subparsers.add_parser("bot", help="Start Telegram bot (polling)")
 
     args = parser.parse_args(argv)
-    ensure_data_dirs()
+    ensure_dirs()
 
     if args.command == "intake":
         return asyncio.run(_run_intake(args.job_url, headed=not args.headless))
 
     if args.command == "fill":
-        return asyncio.run(_run_fill(args.job_url, headed=not args.headless, dry_run=args.dry_run))
+        return asyncio.run(_run_fill(
+            args.job_url, headed=not args.headless, dry_run=args.dry_run
+        ))
 
     if args.command == "bot":
-        return run_bot()
+        return _run_bot()
 
     parser.error(f"Unknown command: {args.command}")
     return 2
 
 
 async def _run_intake(job_url: str, *, headed: bool) -> int:
+    """Capture page state for inspection."""
+    from .page_capture import capture_page_state, setup_browser_page
+
     record = JobRecord(job_url=job_url)
     append_history(record.to_dict())
 
-    evidence = await capture_page_evidence(job_url, headed=headed)
-    llm_result = classify_intake(evidence)
-
-    record.status = "intake_classified"
-    record.updated_at = utc_now_iso()
-    record.evidence_path = str(EVIDENCE_DIR / _evidence_name(evidence.final_url))
-    record.screenshot_path = evidence.screenshot_path
-    if "ats_type" in llm_result:
-        record.ats_type = llm_result.get("ats_type")
-        record.ats_confidence = llm_result.get("detection_confidence")
-
-    result_path = EVIDENCE_DIR / f"{_evidence_name(evidence.final_url).removesuffix('.json')}-llm.json"
-    write_json(result_path, llm_result)
-    append_history(record.to_dict())
-
-    print(json.dumps({
-        "status": record.status,
-        "evidence_path": record.evidence_path,
-        "llm_result_path": str(result_path),
-        "screenshot_path": record.screenshot_path,
-        "ats_type": record.ats_type,
-        "ats_confidence": record.ats_confidence,
-    }, indent=2))
-    return 0
-
-
-async def _scrape_job_description(job_url: str) -> Optional[str]:
-    from playwright.async_api import async_playwright
+    p, browser, ctx, page = await setup_browser_page(job_url, headed=headed)
     try:
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page()
-            await page.goto(job_url, wait_until="domcontentloaded", timeout=30000)
-            await page.wait_for_timeout(2000)
-            text = await page.evaluate("() => document.body.innerText")
-            await browser.close()
-            return text[:6000]
-    except Exception:
-        return None
+        state, elements = await capture_page_state(page)
+        slug = safe_slug(job_url)
+        output_path = __import__("pathlib").Path("data") / "screenshots" / f"{slug}-intake.json"
+        from .page_capture import format_elements_for_llm
+        write_json(output_path, {
+            "url": state.url,
+            "title": state.title,
+            "screenshot": state.screenshot_path,
+            "element_count": len(elements),
+            "elements": format_elements_for_llm(elements),
+        })
+        print(json.dumps({
+            "url": state.url,
+            "title": state.title,
+            "screenshot": state.screenshot_path,
+            "snapshot_length": len(state.aria_snapshot),
+        }, indent=2))
+    finally:
+        await ctx.close()
+        await browser.close()
+        await p.stop()
+
+    record.status = "intake_captured"
+    append_history(record.to_dict())
+    return 0
 
 
 async def _run_fill(job_url: str, *, headed: bool, dry_run: bool) -> int:
+    """Run the agentic fill loop."""
+    from .agent import run_agent
+
     record = JobRecord(job_url=job_url)
     append_history(record.to_dict())
 
-    # ATS detection is informational only — never used for routing (v3 spec §4)
-    evidence = await capture_page_evidence(job_url, headed=headed)
-    llm_result = classify_intake(evidence)
-    ats_type = llm_result.get("ats_type", "unknown")
-    print(f"ATS detection (informational): {ats_type} (confidence: {llm_result.get('detection_confidence', 'N/A')})")
-    record.ats_type = ats_type
-    record.ats_confidence = llm_result.get("detection_confidence")
-
-    handler = GenericHandler(headless=not headed)
-
-    if dry_run:
-        print("\nDry run — Stages A (Extract) + B (Interpret) + C (Map) only.")
-        form_url, fields, screenshot_path = await handler.discover_fields(job_url)
-        print(f"\nStage A: discovered {len(fields)} fields on {form_url}")
-        print(f"Screenshot: {screenshot_path}")
-
-        from .field_interpreter import interpret_fields
-        jd_text = await _scrape_job_description(job_url)
-        interpreted = interpret_fields(fields, page_text=jd_text)
-        print(f"\nStage B (Field Interpreter) annotations:")
-        print(json.dumps(interpreted, indent=2))
-
-        job_context = {"job_url": job_url, "form_url": form_url, "mapping_scope": "current_page_only"}
-        if jd_text:
-            job_context["job_description"] = jd_text
-        mapping = map_fields(fields, job_context=job_context)
-        print(f"\nStage C (Mapper) output:")
-        print(json.dumps(mapping, indent=2))
-
-        record.status = "fields_mapped"
-        record.updated_at = utc_now_iso()
-        evidence_path = EVIDENCE_DIR / f"{_safe_slug(job_url)}-mapping.json"
-        write_json(evidence_path, {"ats_type": ats_type, **mapping})
-        record.evidence_path = str(evidence_path)
-        append_history(record.to_dict())
-        return 0
-
-    print("\nFull pipeline — running Stages A->D with multi-step loop ...")
-
-    from .handlers._shared import discover_chat_id as _discover_chat_id
-    chat_path = ROOT / "data" / "telegram_chat_id.txt"
-    if not chat_path.exists():
-        cid = _discover_chat_id()
-        if cid:
-            print("Chat ID auto-discovered from Telegram! Notifications active.\n")
-        else:
-            print("\nMessage @Mohit_job_bot on Telegram (any text), then press Enter.")
-            print("   Or press Ctrl+C to skip Telegram and use terminal input.")
-            input("   Press Enter when ready... ")
-            cid = _discover_chat_id()
-            if not cid:
-                print("   Still no chat ID. Proceeding without Telegram.\n")
-            else:
-                print("   Chat ID registered! Telegram notifications active.\n")
-
-    print("Filling form...")
-    from .decision_engine import load_cv_variants
-    variants = load_cv_variants()
-    cv_path = variants[0].get("file_path") if variants else None
-
-    mapping: Dict[str, Any] = {"fields": [], "cv_variant": variants[0].get("name") if variants else None}
-    result = await handler.fill_and_stop(job_url, mapping, cv_path=cv_path)
+    result = await run_agent(job_url, headed=headed, dry_run=dry_run)
 
     print(json.dumps({
-        "fill_status": result.status,
-        "filled_fields": result.filled_fields,
-        "errors": result.errors,
-        "screenshot_path": result.screenshot_path,
+        "status": result.status,
+        "filled_count": result.filled_count,
+        "error_count": result.error_count,
+        "cv_variant": result.cv_variant,
     }, indent=2))
 
-    record.status = result.status
-    record.updated_at = utc_now_iso()
-    append_history(record.to_dict())
-
+    append_history(result.to_dict())
     return 0
 
 
-def _evidence_name(url: str) -> str:
-    from .intake import _safe_slug
-    return f"{_safe_slug(url)}.json"
+def _run_bot() -> int:
+    """Start the Telegram bot."""
+    import os
+    from .telegram import _ensure_env, get_chat_id, save_chat_id
+
+    _ensure_env()
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    if not token:
+        print("Error: TELEGRAM_BOT_TOKEN not set in .env")
+        return 1
+
+    # Import here to avoid dependency if not running bot
+    try:
+        from telegram import Update
+        from telegram.ext import Application, CommandHandler, MessageHandler, filters
+        from telegram.request import HTTPXRequest
+    except ImportError:
+        print("Error: python-telegram-bot not installed. Run: pip install python-telegram-bot")
+        return 1
+
+    from .telegram import send_telegram
+
+    async def start(update: Update, _context) -> None:
+        await update.message.reply_text(
+            "Send me a job posting URL and I'll fill the application for your review.\n"
+            "/help — more info"
+        )
+
+    async def help_text(update: Update, _context) -> None:
+        await update.message.reply_text(
+            "Send any job URL and I'll:\n"
+            "1. Open the page in a browser on my end\n"
+            "2. Use AI to understand the form and fill it\n"
+            "3. Leave it open for your review — I never click submit\n\n"
+            "If I get stuck, I'll ask you via this chat."
+        )
+
+    async def handle_message(update: Update, _context) -> None:
+        text = (update.message.text or "").strip()
+        save_chat_id(update.effective_chat.id)
+
+        import re
+        match = re.search(r"https?://[^\s]+", text)
+        if not match:
+            await update.message.reply_text("No URL found. Please send a job posting URL.")
+            return
+
+        job_url = match.group(0)
+        await update.message.reply_text(f"Got it. Starting:\n{job_url}")
+
+        # Run agent in background
+        asyncio.create_task(_run_agent_background(job_url, update.effective_chat.id))
+
+    async def _run_agent_background(job_url: str, chat_id: int) -> None:
+        try:
+            from .agent import run_agent
+            await run_agent(job_url, headed=False)
+        except Exception as exc:
+            await send_telegram(f"Agent failed: {exc}")
+
+    app = Application.builder().token(token).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_text))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    print("Starting Telegram bot (polling)...")
+    async def _poll():
+        async with app:
+            await app.start()
+            await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+            await asyncio.Event().wait()
+
+    asyncio.run(_poll())
+    return 0
 
 
 if __name__ == "__main__":
